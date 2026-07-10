@@ -6,6 +6,8 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_pty/src/flutter_pty_bindings_generated.dart';
+import 'package:flutter_pty/src/environment.dart';
+import 'package:flutter_pty/src/options_validation.dart';
 
 const _libName = 'flutter_pty';
 
@@ -54,50 +56,44 @@ class Pty {
     int columns = 80,
     bool ackRead = false,
   }) {
+    validatePtyStartOptions(
+      executable: executable,
+      arguments: arguments,
+      workingDirectory: workingDirectory,
+      environment: environment,
+      rows: rows,
+      columns: columns,
+    );
     _ensureInitialized();
 
-    final effectiveEnv = <String, String>{};
-
-    effectiveEnv['TERM'] = 'xterm-256color';
-    // Without this, tools like "vi" produce sequences that are not UTF-8 friendly
-    effectiveEnv['LANG'] = 'en_US.UTF-8';
-
-    const envValuesToCopy = {
-      'LOGNAME',
-      'USER',
-      'DISPLAY',
-      'LC_TYPE',
-      'HOME',
-      'PATH'
-    };
-
-    for (var entry in Platform.environment.entries) {
-      if (envValuesToCopy.contains(entry.key)) {
-        effectiveEnv[entry.key] = entry.value;
-      }
-    }
-
-    if (environment != null) {
-      for (var entry in environment.entries) {
-        effectiveEnv[entry.key] = entry.value;
-      }
-    }
+    final caseInsensitiveEnvironment = Platform.isWindows;
+    final effectiveEnv = buildPtyEnvironment(
+      Platform.environment,
+      environment,
+      caseInsensitive: caseInsensitiveEnvironment,
+    );
+    final environmentEntries = orderPtyEnvironment(
+      effectiveEnv,
+      caseInsensitive: caseInsensitiveEnvironment,
+    );
 
     // build argv
     final argv = calloc<Pointer<Utf8>>(arguments.length + 2);
-    argv.elementAt(0).value = executable.toNativeUtf8();
+    argv.value = executable.toNativeUtf8();
     for (var i = 0; i < arguments.length; i++) {
-      argv.elementAt(i + 1).value = arguments[i].toNativeUtf8();
+      (argv + i + 1).value = arguments[i].toNativeUtf8();
     }
-    argv.elementAt(arguments.length + 1).value = nullptr;
+    (argv + arguments.length + 1).value = nullptr;
 
     //build env
-    final envp = calloc<Pointer<Utf8>>(effectiveEnv.length + 1);
-    for (var i = 0; i < effectiveEnv.length; i++) {
-      final entry = effectiveEnv.entries.elementAt(i);
-      envp.elementAt(i).value = '${entry.key}=${entry.value}'.toNativeUtf8();
+    final envp = calloc<Pointer<Utf8>>(environmentEntries.length + 1);
+    var environmentIndex = 0;
+    for (final entry in environmentEntries) {
+      (envp + environmentIndex).value =
+          '${entry.key}=${entry.value}'.toNativeUtf8();
+      environmentIndex++;
     }
-    envp.elementAt(effectiveEnv.length).value = nullptr;
+    (envp + environmentEntries.length).value = nullptr;
 
     final options = calloc<PtyOptions>();
     options.ref.rows = rows;
@@ -107,6 +103,7 @@ class Pty {
     options.ref.environment = envp.cast();
     options.ref.stdout_port = _stdoutPort.sendPort.nativePort;
     options.ref.exit_port = _exitPort.sendPort.nativePort;
+    options.ref.output_done_port = _outputDonePort.sendPort.nativePort;
     options.ref.ackRead = ackRead;
 
     if (workingDirectory != null) {
@@ -117,22 +114,47 @@ class Pty {
 
     _handle = _bindings.pty_create(options);
 
+    malloc.free(options.ref.executable);
+    if (options.ref.working_directory != nullptr) {
+      malloc.free(options.ref.working_directory);
+    }
+    for (var i = 0; i < arguments.length + 1; i++) {
+      malloc.free((argv + i).value);
+    }
+    calloc.free(argv);
+    for (var i = 0; i < environmentEntries.length; i++) {
+      malloc.free((envp + i).value);
+    }
+    calloc.free(envp);
     calloc.free(options);
 
     if (_handle == nullptr) {
-      throw StateError('Failed to create PTY: ${_getPtyError()}');
+      final error = _getPtyError();
+      _stdoutPort.close();
+      _exitPort.close();
+      _outputDonePort.close();
+      throw StateError('Failed to create PTY: $error');
     }
 
-    _exitPort.first.then(_onExitCode);
+    _exitPort.listen(_onNativeExit);
+    _outputDonePort.listen(_onOutputDone);
   }
 
   final _stdoutPort = ReceivePort();
 
   final _exitPort = ReceivePort();
 
+  final _outputDonePort = ReceivePort();
+
   final _exitCodeCompleter = Completer<int>();
 
   late final Pointer<PtyHandle> _handle;
+
+  bool _isDestroyed = false;
+
+  int? _nativeExitCode;
+
+  bool _isOutputDone = false;
 
   /// The output stream from the pseudo-terminal. Note that pseudo-terminals
   /// do not distinguish between stdout and stderr.
@@ -167,19 +189,51 @@ class Pty {
   Future<int> get exitCode => _exitCodeCompleter.future;
 
   /// The process id of the process running in the pseudo-terminal.
-  int get pid => _bindings.pty_getpid(_handle);
+  int get pid {
+    if (_isDestroyed) {
+      throw StateError('PTY has been destroyed');
+    }
+    return _bindings.pty_getpid(_handle);
+  }
+
+  /// Whether the shell currently has a running foreground command.
+  ///
+  /// Unix platforms compare the PTY foreground process group with the shell's
+  /// process group. Windows reports whether the ConPTY shell has a live child
+  /// process, since ConPTY does not expose Unix-style foreground job control.
+  bool get hasRunningForegroundProcess {
+    if (_isDestroyed) return false;
+    return _bindings.pty_has_running_foreground_process(_handle) != 0;
+  }
 
   /// Write data to the pseudo-terminal.
-  void write(Uint8List data) {
+  ///
+  /// Returns false if the process has been destroyed or native backpressure
+  /// rejected the write.
+  bool write(Uint8List data) {
+    if (_isDestroyed || data.isEmpty) return false;
     final buf = malloc<Int8>(data.length);
     buf.asTypedList(data.length).setAll(0, data);
-    _bindings.pty_write(_handle, buf.cast(), data.length);
+    final written = _bindings.pty_write(_handle, buf.cast(), data.length) != 0;
     malloc.free(buf);
+    return written;
   }
 
   /// Resize the pseudo-terminal.
-  void resize(int rows, int cols) {
-    _bindings.pty_resize(_handle, rows, cols);
+  void resize(
+    int rows,
+    int cols, {
+    int pixelWidth = 0,
+    int pixelHeight = 0,
+  }) {
+    if (_isDestroyed) return;
+    validatePtySize(
+      rows: rows,
+      columns: cols,
+      pixelWidth: pixelWidth,
+      pixelHeight: pixelHeight,
+    );
+    _bindings.pty_resize(_handle, rows, cols, pixelWidth, pixelHeight);
   }
 
   /// Kill the process running in the pseudo-terminal.
@@ -188,20 +242,51 @@ class Pty {
   /// Linux and OS X. The default signal is [ProcessSignal.sigterm]
   /// which will normally terminate the process.
   bool kill([ProcessSignal signal = ProcessSignal.sigterm]) {
-    return Process.killPid(pid, signal);
+    if (_isDestroyed) return false;
+    return _bindings.pty_kill(_handle, signal.signalNumber) != 0;
   }
 
   /// indicates that a data chunk has been processed.
   /// This is needed when ackRead is set to true as the pty will wait for this signal to happen
   /// before any additional data is sent.
   void ackRead() {
+    if (_isDestroyed) return;
     _bindings.pty_ack_read(_handle);
   }
 
-  void _onExitCode(dynamic exitCode) {
+  void _onNativeExit(dynamic exitCode) {
+    _nativeExitCode = exitCode as int;
+    _completeExitAfterOutputDrain();
+  }
+
+  void _onOutputDone(dynamic _) {
+    _isOutputDone = true;
+    _completeExitAfterOutputDrain();
+  }
+
+  void _completeExitAfterOutputDrain() {
+    final exitCode = _nativeExitCode;
+    if (!_isOutputDone || exitCode == null || _exitCodeCompleter.isCompleted) {
+      return;
+    }
     _stdoutPort.close();
     _exitPort.close();
+    _outputDonePort.close();
     _exitCodeCompleter.complete(exitCode);
+  }
+
+  /// Destroys the PTY handle, closing the master fd and freeing native resources.
+  /// This should be called when the terminal is disposed to ensure full cleanup.
+  void destroy() {
+    if (_isDestroyed) return;
+    _isDestroyed = true;
+    _bindings.pty_destroy(_handle);
+    _stdoutPort.close();
+    _exitPort.close();
+    _outputDonePort.close();
+    if (!_exitCodeCompleter.isCompleted) {
+      _exitCodeCompleter.complete(_nativeExitCode ?? -1);
+    }
   }
 }
 

@@ -1,3 +1,15 @@
+## Unreleased
+
+* Replace Unix cross-thread mutex unlocking with a poll/wakeup event loop.
+* Drain PTY output before reporting process exit.
+* Clean up native spawn allocations and reader thread resources.
+* Handle partial and interrupted Unix writes.
+* Queue Unix input through the nonblocking PTY event loop.
+* Propagate terminal pixel dimensions during PTY resize.
+* Report Unix child setup failures synchronously and close all forked PTY descriptors.
+* Preserve the full process environment, advertise true color, enable `IUTF8`, and reset child signals.
+* Harden ConPTY ownership, remove startup latency, and support quoted Unicode process arguments.
+
 ## 0.4.2
 * Fix Linux compile error, thanks [@mengyanshou].
 

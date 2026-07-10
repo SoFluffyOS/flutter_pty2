@@ -31,6 +31,8 @@ typedef struct PtyOptions
 
     Dart_Port exit_port;
 
+    Dart_Port output_done_port;
+
     bool ackRead;
 
 } PtyOptions;
@@ -39,14 +41,24 @@ typedef struct PtyHandle PtyHandle;
 
 FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options);
 
-FFI_PLUGIN_EXPORT void pty_write(PtyHandle *handle, char *buffer, int length);
+FFI_PLUGIN_EXPORT int pty_write(PtyHandle *handle, char *buffer, int length);
 
 FFI_PLUGIN_EXPORT void pty_ack_read(PtyHandle *handle);
 
-FFI_PLUGIN_EXPORT int pty_resize(PtyHandle *handle, int rows, int cols);
+FFI_PLUGIN_EXPORT int pty_resize(PtyHandle *handle,
+                                 int rows,
+                                 int cols,
+                                 int pixel_width,
+                                 int pixel_height);
 
 FFI_PLUGIN_EXPORT int pty_getpid(PtyHandle *handle);
 
+FFI_PLUGIN_EXPORT int pty_has_running_foreground_process(PtyHandle *handle);
+
+FFI_PLUGIN_EXPORT int pty_kill(PtyHandle *handle, int signal_number);
+
 FFI_PLUGIN_EXPORT char *pty_error(void);
+
+FFI_PLUGIN_EXPORT void pty_destroy(PtyHandle *handle);
 
 #endif

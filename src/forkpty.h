@@ -5,6 +5,6 @@
 #include <unistd.h>
 
 pid_t pty_forkpty(int *master, int *slave, const struct termios *termp,
-                  const struct winsize *winp);
+                  const struct winsize *winp, int child_error_fd);
 
 #endif

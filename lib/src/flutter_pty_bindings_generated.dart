@@ -387,7 +387,7 @@ class FlutterPtyBindings {
   late final _pty_create = _pty_createPtr
       .asFunction<ffi.Pointer<PtyHandle> Function(ffi.Pointer<PtyOptions>)>();
 
-  void pty_write(
+  int pty_write(
     ffi.Pointer<PtyHandle> handle,
     ffi.Pointer<ffi.Char> buffer,
     int length,
@@ -401,10 +401,10 @@ class FlutterPtyBindings {
 
   late final _pty_writePtr = _lookup<
       ffi.NativeFunction<
-          ffi.Void Function(ffi.Pointer<PtyHandle>, ffi.Pointer<ffi.Char>,
+          ffi.Int Function(ffi.Pointer<PtyHandle>, ffi.Pointer<ffi.Char>,
               ffi.Int)>>('pty_write');
   late final _pty_write = _pty_writePtr.asFunction<
-      void Function(ffi.Pointer<PtyHandle>, ffi.Pointer<ffi.Char>, int)>();
+      int Function(ffi.Pointer<PtyHandle>, ffi.Pointer<ffi.Char>, int)>();
 
   void pty_ack_read(
     ffi.Pointer<PtyHandle> handle,
@@ -424,20 +424,24 @@ class FlutterPtyBindings {
     ffi.Pointer<PtyHandle> handle,
     int rows,
     int cols,
+    int pixel_width,
+    int pixel_height,
   ) {
     return _pty_resize(
       handle,
       rows,
       cols,
+      pixel_width,
+      pixel_height,
     );
   }
 
   late final _pty_resizePtr = _lookup<
       ffi.NativeFunction<
-          ffi.Int Function(
-              ffi.Pointer<PtyHandle>, ffi.Int, ffi.Int)>>('pty_resize');
+          ffi.Int Function(ffi.Pointer<PtyHandle>, ffi.Int, ffi.Int, ffi.Int,
+              ffi.Int)>>('pty_resize');
   late final _pty_resize = _pty_resizePtr
-      .asFunction<int Function(ffi.Pointer<PtyHandle>, int, int)>();
+      .asFunction<int Function(ffi.Pointer<PtyHandle>, int, int, int, int)>();
 
   int pty_getpid(
     ffi.Pointer<PtyHandle> handle,
@@ -453,6 +457,38 @@ class FlutterPtyBindings {
   late final _pty_getpid =
       _pty_getpidPtr.asFunction<int Function(ffi.Pointer<PtyHandle>)>();
 
+  int pty_has_running_foreground_process(
+    ffi.Pointer<PtyHandle> handle,
+  ) {
+    return _pty_has_running_foreground_process(
+      handle,
+    );
+  }
+
+  late final _pty_has_running_foreground_processPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<PtyHandle>)>>(
+    'pty_has_running_foreground_process',
+  );
+  late final _pty_has_running_foreground_process =
+      _pty_has_running_foreground_processPtr
+          .asFunction<int Function(ffi.Pointer<PtyHandle>)>();
+
+  int pty_kill(
+    ffi.Pointer<PtyHandle> handle,
+    int signal_number,
+  ) {
+    return _pty_kill(
+      handle,
+      signal_number,
+    );
+  }
+
+  late final _pty_killPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int Function(ffi.Pointer<PtyHandle>, ffi.Int)>>('pty_kill');
+  late final _pty_kill =
+      _pty_killPtr.asFunction<int Function(ffi.Pointer<PtyHandle>, int)>();
+
   ffi.Pointer<ffi.Char> pty_error() {
     return _pty_error();
   }
@@ -462,6 +498,20 @@ class FlutterPtyBindings {
           'pty_error');
   late final _pty_error =
       _pty_errorPtr.asFunction<ffi.Pointer<ffi.Char> Function()>();
+
+  void pty_destroy(
+    ffi.Pointer<PtyHandle> handle,
+  ) {
+    return _pty_destroy(
+      handle,
+    );
+  }
+
+  late final _pty_destroyPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<PtyHandle>)>>(
+          'pty_destroy');
+  late final _pty_destroy =
+      _pty_destroyPtr.asFunction<void Function(ffi.Pointer<PtyHandle>)>();
 }
 
 typedef Dart_PostCObject_Type = ffi.Pointer<
@@ -769,6 +819,9 @@ final class PtyOptions extends ffi.Struct {
 
   @Dart_Port()
   external int exit_port;
+
+  @Dart_Port()
+  external int output_done_port;
 
   @ffi.Bool()
   external bool ackRead;
