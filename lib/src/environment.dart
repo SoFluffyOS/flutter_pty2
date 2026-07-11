@@ -20,6 +20,12 @@ const _inheritedTerminalIdentityPrefixes = {
   'WEZTERM_',
 };
 
+const _localeEnvironmentKeys = {
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+};
+
 Map<String, String> buildPtyEnvironment(
   Map<String, String> base,
   Map<String, String>? overrides, {
@@ -33,6 +39,7 @@ Map<String, String> buildPtyEnvironment(
   };
   _removeDesktopStartupEnvironment(result, caseInsensitive: caseInsensitive);
   _removeInheritedTerminalIdentity(result, caseInsensitive: caseInsensitive);
+  _ensureUtf8Locale(result, caseInsensitive: caseInsensitive);
   if (overrides == null) {
     return result;
   }
@@ -45,6 +52,40 @@ Map<String, String> buildPtyEnvironment(
     result[entry.key] = entry.value;
   }
   return result;
+}
+
+void _ensureUtf8Locale(
+  Map<String, String> environment, {
+  required bool caseInsensitive,
+}) {
+  if (_hasLocaleEnvironment(environment, caseInsensitive: caseInsensitive)) {
+    return;
+  }
+
+  environment['LANG'] = 'en_US.UTF-8';
+}
+
+bool _hasLocaleEnvironment(
+  Map<String, String> environment, {
+  required bool caseInsensitive,
+}) {
+  for (final key in _localeEnvironmentKeys) {
+    if (!caseInsensitive) {
+      final value = environment[key];
+      if (value != null && value.isNotEmpty) {
+        return true;
+      }
+      continue;
+    }
+
+    final normalizedKey = key.toLowerCase();
+    for (final entry in environment.entries) {
+      if (entry.key.toLowerCase() == normalizedKey && entry.value.isNotEmpty) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 void _removeDesktopStartupEnvironment(

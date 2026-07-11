@@ -16,6 +16,37 @@ void main() {
     expect(environment['TERM_PROGRAM'], 'Lumide');
   });
 
+  test('PTY environment provides UTF-8 locale fallback', () {
+    final environment = buildPtyEnvironment(
+      {'HOME': 'home'},
+      null,
+      caseInsensitive: false,
+    );
+
+    expect(environment['LANG'], 'en_US.UTF-8');
+  });
+
+  test('PTY environment preserves inherited locale', () {
+    final environment = buildPtyEnvironment(
+      {'LANG': 'vi_VN.UTF-8'},
+      null,
+      caseInsensitive: false,
+    );
+
+    expect(environment['LANG'], 'vi_VN.UTF-8');
+  });
+
+  test('Windows PTY environment detects locale keys case-insensitively', () {
+    final environment = buildPtyEnvironment(
+      {'lc_ctype': 'UTF-8'},
+      null,
+      caseInsensitive: true,
+    );
+
+    expect(environment['lc_ctype'], 'UTF-8');
+    expect(environment['LANG'], isNull);
+  });
+
   test('Windows environment block entries are case-insensitively sorted', () {
     final entries = orderPtyEnvironment(
       {'z': 'last', 'Beta': 'middle', 'alpha': 'first'},
