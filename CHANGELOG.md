@@ -1,4 +1,4 @@
-## Unreleased
+## 1.0.0
 
 * Rename package to `flutter_pty2` for the maintained fork.
 * Add explicit `TERM_PROGRAM_VERSION` support for shell integrations.
@@ -11,6 +11,7 @@
 * Report Unix child setup failures synchronously and close all forked PTY descriptors.
 * Preserve the full process environment, advertise true color, enable `IUTF8`, and reset child signals.
 * Harden ConPTY ownership, remove startup latency, and support quoted Unicode process arguments.
+* Sanitize inherited terminal-emulator identity and provide a UTF-8 locale fallback.
 
 ## 0.4.2
 * Fix Linux compile error, thanks [@mengyanshou].

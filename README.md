@@ -1,12 +1,15 @@
-# flutter_pty
+# flutter_pty2
 
-[![ci](https://github.com/TerminalStudio/flutter_pty/actions/workflows/ci.yml/badge.svg)](https://github.com/TerminalStudio/flutter_pty/actions/workflows/ci.yml)
-[![pub points](https://badges.bar/flutter_pty/pub%20points)](https://pub.dev/packages/flutter_pty)
+[![pub package](https://img.shields.io/pub/v/flutter_pty2.svg)](https://pub.dev/packages/flutter_pty2)
 
+`flutter_pty2` is a maintained fork of the original
+[`flutter_pty`](https://pub.dev/packages/flutter_pty) package from
+[`TerminalStudio/flutter_pty`](https://github.com/TerminalStudio/flutter_pty).
+The original package is no longer maintained, so this fork continues the package
+under a new pub package name.
 
-This is an experimental package to explore the possibilities of using native
-code to implement PTY instead of pure FFI and blocking isolates. It's expected to be
-more stable than the current implementation ([pty](https://pub.dev/packages/pty)).
+This package provides a Flutter FFI pseudo-terminal implementation for spawning
+and controlling terminal processes.
 
 ## Platform
 
@@ -18,7 +21,7 @@ more stable than the current implementation ([pty](https://pub.dev/packages/pty)
 ## Quick start
 
 ```dart
-import 'package:flutter_pty/flutter_pty.dart';
+import 'package:flutter_pty2/flutter_pty2.dart';
 
 final pty = Pty.start('bash');
 
@@ -33,7 +36,7 @@ pty.kill();
 
 ---
 
-## Project stucture
+## Project structure
 
 This template uses the following structure:
 
@@ -46,7 +49,7 @@ This template uses the following structure:
 * platform folders (`android`, `ios`, `windows`, etc.): Contains the build files
   for building and bundling the native code library with the platform application.
 
-## Buidling and bundling native code
+## Building and bundling native code
 
 The `pubspec.yaml` specifies FFI plugins as follows:
 
@@ -87,8 +90,8 @@ The native build systems that are invoked by FFI (and method channel) plugins ar
 * For Android: Gradle, which invokes the Android NDK for native builds.
   * See the documentation in android/build.gradle.
 * For iOS and MacOS: Xcode, via CocoaPods.
-  * See the documentation in ios/flutter_pty.podspec.
-  * See the documentation in macos/flutter_pty.podspec.
+  * See the documentation in ios/flutter_pty2.podspec.
+  * See the documentation in macos/flutter_pty2.podspec.
 * For Linux and Windows: CMake.
   * See the documentation in linux/CMakeLists.txt.
   * See the documentation in windows/CMakeLists.txt.
@@ -103,15 +106,14 @@ Regenerate the bindings by running `flutter pub run ffigen --config ffigen.yaml`
 ## Invoking native code
 
 Very short-running native functions can be directly invoked from any isolate.
-For example, see `sum` in `lib/flutter_pty.dart`.
+For example, see `Pty.write` in `lib/flutter_pty.dart`.
 
 Longer-running functions should be invoked on a helper isolate to avoid
 dropping frames in Flutter applications.
-For example, see `sumAsync` in `lib/flutter_pty.dart`.
+For example, see the output stream handling in `lib/flutter_pty.dart`.
 
 ## Flutter help
 
 For help getting started with Flutter, view our
 [online documentation](https://flutter.dev/docs), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
-

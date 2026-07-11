@@ -1,9 +1,9 @@
 name: flutter_pty2
-description: Flutter FFI PTY plugin for spawning and controlling pseudo-terminal processes.
+description: Maintained Flutter FFI PTY plugin for spawning and controlling pseudo-terminal processes.
 version: 1.0.0
-homepage: https://github.com/simonpham/flutter_pty2
-repository: https://github.com/simonpham/flutter_pty2
-issue_tracker: https://github.com/simonpham/flutter_pty2/issues
+homepage: https://github.com/SoFluffyOS/flutter_pty2
+repository: https://github.com/SoFluffyOS/flutter_pty2
+issue_tracker: https://github.com/SoFluffyOS/flutter_pty2/issues
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

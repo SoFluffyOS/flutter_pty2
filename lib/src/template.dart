@@ -5,7 +5,7 @@
 
 // import 'package:ffi/ffi.dart';
 
-// import 'package:flutter_pty/flutter_pty_bindings_generated.dart';
+// import 'package:flutter_pty2/flutter_pty_bindings_generated.dart';
 
 // /// A very short-lived native function.
 // ///

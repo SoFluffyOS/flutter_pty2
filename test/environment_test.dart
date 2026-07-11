@@ -1,4 +1,4 @@
-import 'package:flutter_pty/src/environment.dart';
+import 'package:flutter_pty2/src/environment.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

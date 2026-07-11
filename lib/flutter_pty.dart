@@ -5,11 +5,11 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter_pty/src/flutter_pty_bindings_generated.dart';
-import 'package:flutter_pty/src/environment.dart';
-import 'package:flutter_pty/src/options_validation.dart';
+import 'package:flutter_pty2/src/flutter_pty_bindings_generated.dart';
+import 'package:flutter_pty2/src/environment.dart';
+import 'package:flutter_pty2/src/options_validation.dart';
 
-const _libName = 'flutter_pty';
+const _libName = 'flutter_pty2';
 
 final DynamicLibrary _dylib = () {
   if (Platform.isMacOS || Platform.isIOS) {

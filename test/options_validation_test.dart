@@ -1,4 +1,4 @@
-import 'package:flutter_pty/src/options_validation.dart';
+import 'package:flutter_pty2/src/options_validation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
