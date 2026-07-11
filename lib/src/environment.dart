@@ -30,6 +30,7 @@ Map<String, String> buildPtyEnvironment(
   Map<String, String> base,
   Map<String, String>? overrides, {
   required bool caseInsensitive,
+  String? terminalProgramVersion,
 }) {
   final result = <String, String>{
     ...base,
@@ -40,6 +41,9 @@ Map<String, String> buildPtyEnvironment(
   _removeDesktopStartupEnvironment(result, caseInsensitive: caseInsensitive);
   _removeInheritedTerminalIdentity(result, caseInsensitive: caseInsensitive);
   _ensureUtf8Locale(result, caseInsensitive: caseInsensitive);
+  if (terminalProgramVersion != null && terminalProgramVersion.isNotEmpty) {
+    result['TERM_PROGRAM_VERSION'] = terminalProgramVersion;
+  }
   if (overrides == null) {
     return result;
   }

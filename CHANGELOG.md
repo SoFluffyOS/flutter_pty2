@@ -1,5 +1,7 @@
 ## Unreleased
 
+* Rename package to `flutter_pty2` for the maintained fork.
+* Add explicit `TERM_PROGRAM_VERSION` support for shell integrations.
 * Replace Unix cross-thread mutex unlocking with a poll/wakeup event loop.
 * Drain PTY output before reporting process exit.
 * Clean up native spawn allocations and reader thread resources.

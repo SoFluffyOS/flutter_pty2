@@ -3,6 +3,7 @@ void validatePtyStartOptions({
   required List<String> arguments,
   required String? workingDirectory,
   required Map<String, String>? environment,
+  String? terminalProgramVersion,
   required int rows,
   required int columns,
 }) {
@@ -17,6 +18,16 @@ void validatePtyStartOptions({
 
   if (workingDirectory case final directory?) {
     _validateString('workingDirectory', directory);
+  }
+  if (terminalProgramVersion case final version?) {
+    _validateString('terminalProgramVersion', version);
+    if (version.isEmpty) {
+      throw ArgumentError.value(
+        version,
+        'terminalProgramVersion',
+        'must not be empty',
+      );
+    }
   }
 
   if (environment case final values?) {

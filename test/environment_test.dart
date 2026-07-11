@@ -116,6 +116,21 @@ void main() {
     expect(environment['WT_SESSION'], isNull);
   });
 
+  test('PTY environment can advertise Lumide terminal version', () {
+    final environment = buildPtyEnvironment(
+      {
+        'TERM_PROGRAM_VERSION': 'stale',
+        'HOME': 'home',
+      },
+      null,
+      caseInsensitive: false,
+      terminalProgramVersion: '1.2.3',
+    );
+
+    expect(environment['TERM_PROGRAM'], 'Lumide');
+    expect(environment['TERM_PROGRAM_VERSION'], '1.2.3');
+  });
+
   test('Windows PTY environment strips terminal identity case-insensitively',
       () {
     final environment = buildPtyEnvironment(
@@ -138,6 +153,21 @@ void main() {
     expect(environment['wezterm_pane'], isNull);
     expect(environment['wt_session'], isNull);
     expect(environment['TERM_PROGRAM'], 'Lumide');
+  });
+
+  test('Windows PTY environment publishes terminal version canonically', () {
+    final environment = buildPtyEnvironment(
+      {
+        'term_program_version': 'stale',
+        'HOME': 'home',
+      },
+      null,
+      caseInsensitive: true,
+      terminalProgramVersion: '1.2.3',
+    );
+
+    expect(environment['term_program_version'], isNull);
+    expect(environment['TERM_PROGRAM_VERSION'], '1.2.3');
   });
 
   test('Unix environment preserves case-distinct keys and insertion order', () {

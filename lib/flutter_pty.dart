@@ -52,6 +52,7 @@ class Pty {
     this.arguments = const [],
     String? workingDirectory,
     Map<String, String>? environment,
+    String? terminalProgramVersion,
     int rows = 25,
     int columns = 80,
     bool ackRead = false,
@@ -61,6 +62,7 @@ class Pty {
       arguments: arguments,
       workingDirectory: workingDirectory,
       environment: environment,
+      terminalProgramVersion: terminalProgramVersion,
       rows: rows,
       columns: columns,
     );
@@ -71,6 +73,7 @@ class Pty {
       Platform.environment,
       environment,
       caseInsensitive: caseInsensitiveEnvironment,
+      terminalProgramVersion: terminalProgramVersion,
     );
     final environmentEntries = orderPtyEnvironment(
       effectiveEnv,

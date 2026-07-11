@@ -54,6 +54,33 @@ void main() {
         ),
         throwsArgumentError,
       );
+      expect(
+        () => validatePtyStartOptions(
+          executable: '/bin/sh',
+          arguments: const [],
+          workingDirectory: null,
+          environment: null,
+          terminalProgramVersion: '1.0\x00',
+          rows: 24,
+          columns: 80,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('rejects empty terminal program version', () {
+      expect(
+        () => validatePtyStartOptions(
+          executable: '/bin/sh',
+          arguments: const [],
+          workingDirectory: null,
+          environment: null,
+          terminalProgramVersion: '',
+          rows: 24,
+          columns: 80,
+        ),
+        throwsArgumentError,
+      );
     });
 
     test('rejects invalid environment entries', () {
