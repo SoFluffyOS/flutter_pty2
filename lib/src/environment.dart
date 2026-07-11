@@ -4,8 +4,20 @@ const _desktopStartupEnvironmentKeys = {
 };
 
 const _inheritedTerminalIdentityKeys = {
+  'ALACRITTY_LOG',
+  'ALACRITTY_WINDOW_ID',
+  'KONSOLE_VERSION',
+  'TERM_SESSION_ID',
   'TERM_PROGRAM_VERSION',
   'VTE_VERSION',
+  'WT_PROFILE_ID',
+  'WT_SESSION',
+};
+
+const _inheritedTerminalIdentityPrefixes = {
+  'GHOSTTY_',
+  'KITTY_',
+  'WEZTERM_',
 };
 
 Map<String, String> buildPtyEnvironment(
@@ -65,6 +77,21 @@ void _removeInheritedTerminalIdentity(
     final normalizedKey = key.toLowerCase();
     environment.removeWhere(
       (environmentKey, _) => environmentKey.toLowerCase() == normalizedKey,
+    );
+  }
+
+  for (final prefix in _inheritedTerminalIdentityPrefixes) {
+    if (!caseInsensitive) {
+      environment.removeWhere(
+        (environmentKey, _) => environmentKey.startsWith(prefix),
+      );
+      continue;
+    }
+
+    final normalizedPrefix = prefix.toLowerCase();
+    environment.removeWhere(
+      (environmentKey, _) =>
+          environmentKey.toLowerCase().startsWith(normalizedPrefix),
     );
   }
 }

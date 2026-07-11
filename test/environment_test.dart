@@ -60,32 +60,52 @@ void main() {
   test('PTY environment strips inherited terminal identity', () {
     final environment = buildPtyEnvironment(
       {
+        'ALACRITTY_LOG': '/tmp/alacritty.log',
+        'GHOSTTY_RESOURCES_DIR': '/ghostty',
+        'KITTY_WINDOW_ID': '1',
+        'KONSOLE_VERSION': '250400',
         'TERM_PROGRAM': 'Apple_Terminal',
         'TERM_PROGRAM_VERSION': '999',
         'VTE_VERSION': '7600',
+        'WEZTERM_PANE': '2',
+        'WT_SESSION': 'session',
       },
       null,
       caseInsensitive: false,
     );
 
+    expect(environment['ALACRITTY_LOG'], isNull);
+    expect(environment['GHOSTTY_RESOURCES_DIR'], isNull);
+    expect(environment['KITTY_WINDOW_ID'], isNull);
+    expect(environment['KONSOLE_VERSION'], isNull);
     expect(environment['TERM_PROGRAM'], 'Lumide');
     expect(environment['TERM_PROGRAM_VERSION'], isNull);
     expect(environment['VTE_VERSION'], isNull);
+    expect(environment['WEZTERM_PANE'], isNull);
+    expect(environment['WT_SESSION'], isNull);
   });
 
   test('Windows PTY environment strips terminal identity case-insensitively',
       () {
     final environment = buildPtyEnvironment(
       {
+        'ghostty_resources_dir': '/ghostty',
+        'kitty_window_id': '1',
         'term_program_version': '999',
         'vte_version': '7600',
+        'wezterm_pane': '2',
+        'wt_session': 'session',
       },
       null,
       caseInsensitive: true,
     );
 
+    expect(environment['ghostty_resources_dir'], isNull);
+    expect(environment['kitty_window_id'], isNull);
     expect(environment['term_program_version'], isNull);
     expect(environment['vte_version'], isNull);
+    expect(environment['wezterm_pane'], isNull);
+    expect(environment['wt_session'], isNull);
     expect(environment['TERM_PROGRAM'], 'Lumide');
   });
 
