@@ -154,6 +154,37 @@ void main() {
     expect(environment['WT_SESSION'], isNull);
   });
 
+  test('PTY environment sanitizes caller override identity', () {
+    final environment = buildPtyEnvironment(
+      {'HOME': 'home'},
+      {
+        'ALACRITTY_WINDOW_ID': '1',
+        'GHOSTTY_BIN_DIR': '/ghostty',
+        'TERM_PROGRAM': 'Apple_Terminal',
+        'TERM_PROGRAM_VERSION': '999',
+        'XDG_ACTIVATION_TOKEN': 'token',
+      },
+      caseInsensitive: false,
+    );
+
+    expect(environment['ALACRITTY_WINDOW_ID'], isNull);
+    expect(environment['GHOSTTY_BIN_DIR'], isNull);
+    expect(environment['TERM_PROGRAM'], 'Lumide');
+    expect(environment['TERM_PROGRAM_VERSION'], isNull);
+    expect(environment['XDG_ACTIVATION_TOKEN'], isNull);
+  });
+
+  test('PTY environment keeps caller overrides UTF-8 safe', () {
+    final environment = buildPtyEnvironment(
+      {'LANG': 'en_US.UTF-8'},
+      {'LANG': 'C', 'LC_CTYPE': 'POSIX'},
+      caseInsensitive: false,
+    );
+
+    expect(environment['LANG'], 'en_US.UTF-8');
+    expect(environment['LC_CTYPE'], 'en_US.UTF-8');
+  });
+
   test('PTY environment can advertise Lumide terminal version', () {
     final environment = buildPtyEnvironment(
       {
@@ -190,6 +221,26 @@ void main() {
     expect(environment['vte_version'], isNull);
     expect(environment['wezterm_pane'], isNull);
     expect(environment['wt_session'], isNull);
+    expect(environment['TERM_PROGRAM'], 'Lumide');
+  });
+
+  test('Windows PTY environment sanitizes override identity case-insensitively',
+      () {
+    final environment = buildPtyEnvironment(
+      {'HOME': 'home'},
+      {
+        'ghostty_bin_dir': '/ghostty',
+        'term_program': 'Apple_Terminal',
+        'term_program_version': '999',
+        'xdg_activation_token': 'token',
+      },
+      caseInsensitive: true,
+    );
+
+    expect(environment['ghostty_bin_dir'], isNull);
+    expect(environment['term_program'], isNull);
+    expect(environment['term_program_version'], isNull);
+    expect(environment['xdg_activation_token'], isNull);
     expect(environment['TERM_PROGRAM'], 'Lumide');
   });
 

@@ -8,6 +8,7 @@ const _inheritedTerminalIdentityKeys = {
   'ALACRITTY_WINDOW_ID',
   'KONSOLE_VERSION',
   'TERM_SESSION_ID',
+  'TERM_PROGRAM',
   'TERM_PROGRAM_VERSION',
   'VTE_VERSION',
   'WT_PROFILE_ID',
@@ -32,22 +33,26 @@ Map<String, String> buildPtyEnvironment(
     'COLORTERM': 'truecolor',
     'TERM_PROGRAM': 'Lumide',
   };
+  if (overrides != null) {
+    for (final entry in overrides.entries) {
+      if (caseInsensitive) {
+        final normalizedKey = entry.key.toLowerCase();
+        result.removeWhere((key, _) => key.toLowerCase() == normalizedKey);
+      }
+      result[entry.key] = entry.value;
+    }
+  }
   _removeDesktopStartupEnvironment(result, caseInsensitive: caseInsensitive);
   _removeInheritedTerminalIdentity(result, caseInsensitive: caseInsensitive);
   _ensureUtf8Locale(result, caseInsensitive: caseInsensitive);
+  result['TERM_PROGRAM'] = 'Lumide';
   if (terminalProgramVersion != null && terminalProgramVersion.isNotEmpty) {
-    result['TERM_PROGRAM_VERSION'] = terminalProgramVersion;
-  }
-  if (overrides == null) {
-    return result;
-  }
-
-  for (final entry in overrides.entries) {
-    if (caseInsensitive) {
-      final normalizedKey = entry.key.toLowerCase();
-      result.removeWhere((key, _) => key.toLowerCase() == normalizedKey);
-    }
-    result[entry.key] = entry.value;
+    _setCanonicalEnvironmentValue(
+      result,
+      'TERM_PROGRAM_VERSION',
+      terminalProgramVersion,
+      caseInsensitive: caseInsensitive,
+    );
   }
   return result;
 }
