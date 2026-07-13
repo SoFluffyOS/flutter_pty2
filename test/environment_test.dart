@@ -24,9 +24,10 @@ void main() {
     );
 
     expect(environment['LANG'], 'en_US.UTF-8');
+    expect(environment['LC_CTYPE'], 'en_US.UTF-8');
   });
 
-  test('PTY environment preserves inherited locale', () {
+  test('PTY environment preserves inherited UTF-8 locale', () {
     final environment = buildPtyEnvironment(
       {'LANG': 'vi_VN.UTF-8'},
       null,
@@ -34,6 +35,30 @@ void main() {
     );
 
     expect(environment['LANG'], 'vi_VN.UTF-8');
+    expect(environment['LC_CTYPE'], 'en_US.UTF-8');
+  });
+
+  test('PTY environment upgrades non-UTF-8 locale to UTF-8 fallback', () {
+    final environment = buildPtyEnvironment(
+      {'LANG': 'C', 'LC_CTYPE': 'POSIX'},
+      null,
+      caseInsensitive: false,
+    );
+
+    expect(environment['LANG'], 'en_US.UTF-8');
+    expect(environment['LC_CTYPE'], 'en_US.UTF-8');
+  });
+
+  test('PTY environment preserves explicit LC_ALL locale', () {
+    final environment = buildPtyEnvironment(
+      {'LC_ALL': 'C', 'LANG': 'C'},
+      null,
+      caseInsensitive: false,
+    );
+
+    expect(environment['LC_ALL'], 'C');
+    expect(environment['LANG'], 'C');
+    expect(environment['LC_CTYPE'], isNull);
   });
 
   test('Windows PTY environment detects locale keys case-insensitively', () {
@@ -44,7 +69,20 @@ void main() {
     );
 
     expect(environment['lc_ctype'], 'UTF-8');
-    expect(environment['LANG'], isNull);
+    expect(environment['LANG'], 'en_US.UTF-8');
+  });
+
+  test('Windows PTY environment upgrades locale canonically', () {
+    final environment = buildPtyEnvironment(
+      {'lang': 'C', 'lc_ctype': 'POSIX'},
+      null,
+      caseInsensitive: true,
+    );
+
+    expect(environment['lang'], isNull);
+    expect(environment['lc_ctype'], isNull);
+    expect(environment['LANG'], 'en_US.UTF-8');
+    expect(environment['LC_CTYPE'], 'en_US.UTF-8');
   });
 
   test('Windows environment block entries are case-insensitively sorted', () {
