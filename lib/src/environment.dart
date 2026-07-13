@@ -66,7 +66,16 @@ void _ensureUtf8Locale(
     key: 'LC_ALL',
     caseInsensitive: caseInsensitive,
   );
+  if (_isUtf8Locale(lcAll)) {
+    return;
+  }
   if (lcAll != null && lcAll.isNotEmpty) {
+    _setCanonicalEnvironmentValue(
+      environment,
+      'LC_ALL',
+      'en_US.UTF-8',
+      caseInsensitive: caseInsensitive,
+    );
     return;
   }
 

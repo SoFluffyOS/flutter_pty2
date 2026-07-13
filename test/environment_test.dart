@@ -49,14 +49,26 @@ void main() {
     expect(environment['LC_CTYPE'], 'en_US.UTF-8');
   });
 
-  test('PTY environment preserves explicit LC_ALL locale', () {
+  test('PTY environment upgrades non-UTF-8 LC_ALL locale', () {
     final environment = buildPtyEnvironment(
       {'LC_ALL': 'C', 'LANG': 'C'},
       null,
       caseInsensitive: false,
     );
 
-    expect(environment['LC_ALL'], 'C');
+    expect(environment['LC_ALL'], 'en_US.UTF-8');
+    expect(environment['LANG'], 'C');
+    expect(environment['LC_CTYPE'], isNull);
+  });
+
+  test('PTY environment preserves explicit UTF-8 LC_ALL locale', () {
+    final environment = buildPtyEnvironment(
+      {'LC_ALL': 'vi_VN.UTF-8', 'LANG': 'C'},
+      null,
+      caseInsensitive: false,
+    );
+
+    expect(environment['LC_ALL'], 'vi_VN.UTF-8');
     expect(environment['LANG'], 'C');
     expect(environment['LC_CTYPE'], isNull);
   });
