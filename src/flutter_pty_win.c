@@ -640,6 +640,10 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
         pty->stopping = TRUE;
         WakeAllConditionVariable(&pty->writeCondition);
         LeaveCriticalSection(&pty->writeMutex);
+        if (pty->readThread != NULL)
+        {
+            CancelSynchronousIo(pty->readThread);
+        }
         ClosePseudoConsole(hPty);
         CloseHandle(inputWriteSide);
         CloseHandle(outputReadSide);
@@ -856,6 +860,7 @@ FFI_PLUGIN_EXPORT void pty_destroy(PtyHandle *handle)
     terminate_child_processes(handle->dwProcessId);
     TerminateProcess(handle->processHandle, 1);
     ReleaseSemaphore(handle->hMutex, 1, NULL);
+    CancelSynchronousIo(handle->readThread);
     CancelSynchronousIo(handle->writeThread);
     ClosePseudoConsole(handle->hPty);
     CloseHandle(handle->inputWriteSide);
