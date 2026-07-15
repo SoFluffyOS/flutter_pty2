@@ -236,7 +236,16 @@ class Pty {
       pixelWidth: pixelWidth,
       pixelHeight: pixelHeight,
     );
-    _bindings.pty_resize(_handle, rows, cols, pixelWidth, pixelHeight);
+    final result = _bindings.pty_resize(
+      _handle,
+      rows,
+      cols,
+      pixelWidth,
+      pixelHeight,
+    );
+    if (result != 0) {
+      throw StateError('Failed to resize PTY');
+    }
   }
 
   /// Kill the process running in the pseudo-terminal.
