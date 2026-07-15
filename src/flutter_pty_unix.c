@@ -332,6 +332,22 @@ static void set_environment(char **environment)
     }
 }
 
+static void enable_utf8_input_mode(int fd)
+{
+#ifdef IUTF8
+    struct termios attributes;
+    if (tcgetattr(fd, &attributes) != 0)
+    {
+        return;
+    }
+
+    attributes.c_iflag |= IUTF8;
+    tcsetattr(fd, TCSANOW, &attributes);
+#else
+    (void)fd;
+#endif
+}
+
 FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
 {
     error_buffer[0] = '\0';
@@ -436,6 +452,8 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
     handle->pid = pid;
     handle->ackRead = options->ackRead;
     pthread_mutex_init(&handle->mutex, NULL);
+
+    enable_utf8_input_mode(ptm);
 
     int ptm_flags = fcntl(ptm, F_GETFL);
     if (ptm_flags < 0 || fcntl(ptm, F_SETFL, ptm_flags | O_NONBLOCK) < 0)
