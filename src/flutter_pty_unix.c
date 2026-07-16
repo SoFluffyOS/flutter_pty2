@@ -73,6 +73,8 @@ typedef struct ReadLoopOptions
 
 static char error_buffer[256];
 
+extern char **environ;
+
 static void set_error(const char *operation, int error_number)
 {
     snprintf(error_buffer,
@@ -320,16 +322,8 @@ static int start_wait_exit_thread(int pid, Dart_Port port)
 
 static void set_environment(char **environment)
 {
-    if (environment == NULL)
-    {
-        return;
-    }
-
-    while (*environment != NULL)
-    {
-        putenv(*environment);
-        environment++;
-    }
+    if (environment == NULL) return;
+    environ = environment;
 }
 
 static void enable_utf8_input_mode(int fd)

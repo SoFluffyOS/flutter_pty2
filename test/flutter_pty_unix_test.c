@@ -295,6 +295,32 @@ int main(int argc, char **argv)
     assert(handle == NULL);
     assert(strstr(pty_error(), "No such file or directory") != NULL);
 
+    reset_events();
+    assert(setenv("GHOSTTY_RESOURCES_DIR", "leaked", 1) == 0);
+    char *environment_arguments[] = {
+        "/bin/sh",
+        "-c",
+        "printf '%s|%s' \"$TERM_PROGRAM\" \"${GHOSTTY_RESOURCES_DIR-unset}\"",
+        NULL,
+    };
+    char *clean_environment[] = {
+        "PATH=/usr/bin:/bin",
+        "TERM_PROGRAM=Lumide",
+        NULL,
+    };
+    options.executable = environment_arguments[0];
+    options.arguments = environment_arguments;
+    options.environment = clean_environment;
+    options.working_directory = NULL;
+
+    handle = pty_create(&options);
+    assert(unsetenv("GHOSTTY_RESOURCES_DIR") == 0);
+    assert(handle != NULL);
+    assert(wait_for_exit(2000));
+    assert(exit_value == 0);
+    assert(strcmp(output, "Lumide|unset") == 0);
+    pty_destroy(handle);
+
     puts("flutter_pty Unix lifecycle test passed");
     return 0;
 }
