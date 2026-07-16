@@ -71,7 +71,7 @@ typedef struct ReadLoopOptions
 
 } ReadLoopOptions;
 
-static char error_buffer[256];
+static _Thread_local char error_buffer[256];
 
 extern char **environ;
 

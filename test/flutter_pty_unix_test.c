@@ -22,6 +22,44 @@ static bool exited;
 static bool output_done;
 static int64_t exit_value;
 
+static pthread_mutex_t error_barrier_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t error_barrier_condition = PTHREAD_COND_INITIALIZER;
+static int error_barrier_count;
+
+static void *verify_thread_local_error(void *argument)
+{
+    int operation = *(int *)argument;
+    if (operation == 0)
+    {
+        assert(pty_resize(NULL, 24, 80, 0, 0) == -1);
+    }
+    else
+    {
+        assert(pty_create(NULL) == NULL);
+    }
+
+    pthread_mutex_lock(&error_barrier_mutex);
+    error_barrier_count++;
+    pthread_cond_broadcast(&error_barrier_condition);
+    while (error_barrier_count < 2)
+    {
+        pthread_cond_wait(&error_barrier_condition, &error_barrier_mutex);
+    }
+    pthread_mutex_unlock(&error_barrier_mutex);
+
+    const char *error = pty_error();
+    assert(error != NULL);
+    if (operation == 0)
+    {
+        assert(strstr(error, "invalid PTY size") != NULL);
+    }
+    else
+    {
+        assert(strstr(error, "invalid PTY options") != NULL);
+    }
+    return NULL;
+}
+
 static bool post_object(Dart_Port_DL port, Dart_CObject *message)
 {
     (void)port;
@@ -164,6 +202,20 @@ int main(int argc, char **argv)
     assert(pty_create(NULL) == NULL);
     assert(strstr(pty_error(), "Invalid argument") != NULL);
     assert(pty_getpid(NULL) == -1);
+
+    int error_operations[] = {0, 1};
+    pthread_t error_threads[2];
+    for (int index = 0; index < 2; index++)
+    {
+        assert(pthread_create(&error_threads[index],
+                              NULL,
+                              verify_thread_local_error,
+                              &error_operations[index]) == 0);
+    }
+    for (int index = 0; index < 2; index++)
+    {
+        assert(pthread_join(error_threads[index], NULL) == 0);
+    }
 
     char *arguments[] = {
         "/bin/sh",

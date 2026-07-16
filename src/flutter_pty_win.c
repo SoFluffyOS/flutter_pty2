@@ -470,7 +470,13 @@ static HANDLE start_write_thread(PtyHandle *pty)
     return thread;
 }
 
-char *error_message = NULL;
+#if defined(_MSC_VER)
+#define PTY_THREAD_LOCAL __declspec(thread)
+#else
+#define PTY_THREAD_LOCAL _Thread_local
+#endif
+
+static PTY_THREAD_LOCAL char *error_message = NULL;
 
 FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
 {
