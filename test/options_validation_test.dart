@@ -1,3 +1,4 @@
+import 'package:flutter_pty2/flutter_pty2.dart';
 import 'package:flutter_pty2/src/options_validation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -159,5 +160,11 @@ void main() {
         throwsArgumentError,
       );
     });
+  });
+
+  test('Pty.start validates before native initialization', () {
+    for (var attempt = 0; attempt < 128; attempt++) {
+      expect(() => Pty.start(''), throwsArgumentError);
+    }
   });
 }

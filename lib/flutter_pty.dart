@@ -47,9 +47,9 @@ class Pty {
   /// Spawns a process in a pseudo-terminal. The arguments have the same meaning
   /// as in [Process.start].
   /// [ackRead] indicates if the pty should wait for a call to [Pty.ackRead] before sending the next data.
-  Pty.start(
-    this.executable, {
-    this.arguments = const [],
+  factory Pty.start(
+    String executable, {
+    List<String> arguments = const [],
     String? workingDirectory,
     Map<String, String>? environment,
     String? terminalProgramVersion,
@@ -68,6 +68,33 @@ class Pty {
     );
     _ensureInitialized();
 
+    final pty = Pty._(executable, arguments);
+    try {
+      pty._start(
+        workingDirectory: workingDirectory,
+        environment: environment,
+        terminalProgramVersion: terminalProgramVersion,
+        rows: rows,
+        columns: columns,
+        ackRead: ackRead,
+      );
+      return pty;
+    } catch (_) {
+      pty._closePorts();
+      rethrow;
+    }
+  }
+
+  Pty._(this.executable, this.arguments);
+
+  void _start({
+    required String? workingDirectory,
+    required Map<String, String>? environment,
+    required String? terminalProgramVersion,
+    required int rows,
+    required int columns,
+    required bool ackRead,
+  }) {
     final caseInsensitiveEnvironment = Platform.isWindows;
     final effectiveEnv = buildPtyEnvironment(
       Platform.environment,
@@ -80,62 +107,43 @@ class Pty {
       caseInsensitive: caseInsensitiveEnvironment,
     );
 
-    // build argv
-    final argv = calloc<Pointer<Utf8>>(arguments.length + 2);
-    argv.value = executable.toNativeUtf8();
-    for (var i = 0; i < arguments.length; i++) {
-      (argv + i + 1).value = arguments[i].toNativeUtf8();
-    }
-    (argv + arguments.length + 1).value = nullptr;
+    _handle = using((arena) {
+      final argv = arena<Pointer<Utf8>>(arguments.length + 2);
+      argv.value = executable.toNativeUtf8(allocator: arena);
+      for (var i = 0; i < arguments.length; i++) {
+        (argv + i + 1).value = arguments[i].toNativeUtf8(allocator: arena);
+      }
+      (argv + arguments.length + 1).value = nullptr;
 
-    //build env
-    final envp = calloc<Pointer<Utf8>>(environmentEntries.length + 1);
-    var environmentIndex = 0;
-    for (final entry in environmentEntries) {
-      (envp + environmentIndex).value =
-          '${entry.key}=${entry.value}'.toNativeUtf8();
-      environmentIndex++;
-    }
-    (envp + environmentEntries.length).value = nullptr;
+      final envp = arena<Pointer<Utf8>>(environmentEntries.length + 1);
+      var environmentIndex = 0;
+      for (final entry in environmentEntries) {
+        (envp + environmentIndex).value =
+            '${entry.key}=${entry.value}'.toNativeUtf8(allocator: arena);
+        environmentIndex++;
+      }
+      (envp + environmentEntries.length).value = nullptr;
 
-    final options = calloc<PtyOptions>();
-    options.ref.rows = rows;
-    options.ref.cols = columns;
-    options.ref.executable = executable.toNativeUtf8().cast();
-    options.ref.arguments = argv.cast();
-    options.ref.environment = envp.cast();
-    options.ref.stdout_port = _stdoutPort.sendPort.nativePort;
-    options.ref.exit_port = _exitPort.sendPort.nativePort;
-    options.ref.output_done_port = _stdoutPort.sendPort.nativePort;
-    options.ref.ackRead = ackRead;
+      final options = arena<PtyOptions>();
+      options.ref.rows = rows;
+      options.ref.cols = columns;
+      options.ref.executable = executable.toNativeUtf8(allocator: arena).cast();
+      options.ref.arguments = argv.cast();
+      options.ref.environment = envp.cast();
+      options.ref.stdout_port = _stdoutPort.sendPort.nativePort;
+      options.ref.exit_port = _exitPort.sendPort.nativePort;
+      options.ref.output_done_port = _stdoutPort.sendPort.nativePort;
+      options.ref.ackRead = ackRead;
+      options.ref.working_directory = switch (workingDirectory) {
+        final directory? => directory.toNativeUtf8(allocator: arena).cast(),
+        null => nullptr,
+      };
 
-    if (workingDirectory != null) {
-      options.ref.working_directory = workingDirectory.toNativeUtf8().cast();
-    } else {
-      options.ref.working_directory = nullptr;
-    }
-
-    _handle = _bindings.pty_create(options);
-
-    malloc.free(options.ref.executable);
-    if (options.ref.working_directory != nullptr) {
-      malloc.free(options.ref.working_directory);
-    }
-    for (var i = 0; i < arguments.length + 1; i++) {
-      malloc.free((argv + i).value);
-    }
-    calloc.free(argv);
-    for (var i = 0; i < environmentEntries.length; i++) {
-      malloc.free((envp + i).value);
-    }
-    calloc.free(envp);
-    calloc.free(options);
+      return _bindings.pty_create(options);
+    });
 
     if (_handle == nullptr) {
       final error = _getPtyError();
-      _stdoutPort.close();
-      _exitPort.close();
-      unawaited(_outputController.close());
       throw StateError('Failed to create PTY: $error');
     }
 
@@ -290,9 +298,15 @@ class Pty {
     if (!_isOutputDone || exitCode == null || _exitCodeCompleter.isCompleted) {
       return;
     }
+    _closePorts();
+    _exitCodeCompleter.complete(exitCode);
+  }
+
+  void _closePorts() {
     _stdoutPort.close();
     _exitPort.close();
-    _exitCodeCompleter.complete(exitCode);
+    if (_outputController.isClosed) return;
+    unawaited(_outputController.close());
   }
 
   /// Destroys the PTY handle, closing the master fd and freeing native resources.
@@ -301,9 +315,7 @@ class Pty {
     if (_isDestroyed) return;
     _isDestroyed = true;
     _bindings.pty_destroy(_handle);
-    _stdoutPort.close();
-    _exitPort.close();
-    unawaited(_outputController.close());
+    _closePorts();
     if (!_exitCodeCompleter.isCompleted) {
       _exitCodeCompleter.complete(_nativeExitCode ?? -1);
     }
