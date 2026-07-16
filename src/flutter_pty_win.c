@@ -755,11 +755,13 @@ FFI_PLUGIN_EXPORT int pty_resize(PtyHandle *handle,
                                  int pixel_width,
                                  int pixel_height)
 {
+    error_message = NULL;
     if (handle == NULL || rows <= 0 || rows > INT16_MAX ||
         cols <= 0 || cols > INT16_MAX ||
         pixel_width < 0 || pixel_width > UINT16_MAX ||
         pixel_height < 0 || pixel_height > UINT16_MAX)
     {
+        error_message = "Invalid PTY size";
         return -1;
     }
 
@@ -771,7 +773,9 @@ FFI_PLUGIN_EXPORT int pty_resize(PtyHandle *handle,
     size.X = cols;
     size.Y = rows;
 
-    return ResizePseudoConsole(handle->hPty, size);
+    HRESULT result = ResizePseudoConsole(handle->hPty, size);
+    if (FAILED(result)) error_message = "Failed to resize pseudo console";
+    return result;
 }
 
 FFI_PLUGIN_EXPORT int pty_getpid(PtyHandle *handle)

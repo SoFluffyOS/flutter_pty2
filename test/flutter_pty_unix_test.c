@@ -228,9 +228,11 @@ int main(int argc, char **argv)
     handle = pty_create(&options);
     assert(handle != NULL);
     assert(pty_resize(NULL, 40, 100, 900, 600) == -1);
+    assert(strstr(pty_error(), "invalid PTY size") != NULL);
     assert(pty_resize(handle, 0, 100, 900, 600) == -1);
     assert(pty_resize(handle, 40, 0, 900, 600) == -1);
     assert(pty_resize(handle, 40, 100, 900, 600) == 0);
+    assert(pty_error() == NULL);
     assert(pty_write(handle, "\n", 1) == 1);
 
     assert(wait_for_exit(2000));

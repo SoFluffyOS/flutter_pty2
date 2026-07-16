@@ -244,7 +244,8 @@ class Pty {
       pixelHeight,
     );
     if (result != 0) {
-      throw StateError('Failed to resize PTY');
+      final error = _getPtyError() ?? 'Unknown native error';
+      throw StateError('Failed to resize PTY: $error');
     }
   }
 

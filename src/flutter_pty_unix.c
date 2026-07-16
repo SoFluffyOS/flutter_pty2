@@ -600,12 +600,14 @@ FFI_PLUGIN_EXPORT int pty_resize(PtyHandle *handle,
                                  int pixel_width,
                                  int pixel_height)
 {
+    error_buffer[0] = '\0';
     if (handle == NULL || rows <= 0 || rows > INT16_MAX ||
         cols <= 0 || cols > INT16_MAX ||
         pixel_width < 0 || pixel_width > UINT16_MAX ||
         pixel_height < 0 || pixel_height > UINT16_MAX)
     {
         errno = EINVAL;
+        set_error("invalid PTY size", EINVAL);
         return -1;
     }
 
@@ -616,7 +618,14 @@ FFI_PLUGIN_EXPORT int pty_resize(PtyHandle *handle,
     ws.ws_xpixel = pixel_width;
     ws.ws_ypixel = pixel_height;
 
-    return ioctl(handle->ptm, TIOCSWINSZ, &ws);
+    int result;
+    do
+    {
+        result = ioctl(handle->ptm, TIOCSWINSZ, &ws);
+    } while (result < 0 && errno == EINTR);
+
+    if (result < 0) set_error("failed to resize PTY", errno);
+    return result;
 }
 
 FFI_PLUGIN_EXPORT int pty_getpid(PtyHandle *handle)
