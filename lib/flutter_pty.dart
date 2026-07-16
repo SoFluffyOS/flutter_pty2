@@ -106,7 +106,7 @@ class Pty {
     options.ref.environment = envp.cast();
     options.ref.stdout_port = _stdoutPort.sendPort.nativePort;
     options.ref.exit_port = _exitPort.sendPort.nativePort;
-    options.ref.output_done_port = _outputDonePort.sendPort.nativePort;
+    options.ref.output_done_port = _stdoutPort.sendPort.nativePort;
     options.ref.ackRead = ackRead;
 
     if (workingDirectory != null) {
@@ -135,19 +135,21 @@ class Pty {
       final error = _getPtyError();
       _stdoutPort.close();
       _exitPort.close();
-      _outputDonePort.close();
+      unawaited(_outputController.close());
       throw StateError('Failed to create PTY: $error');
     }
 
+    _stdoutPort.listen(_onNativeOutput);
     _exitPort.listen(_onNativeExit);
-    _outputDonePort.listen(_onOutputDone);
   }
 
   final _stdoutPort = ReceivePort();
 
   final _exitPort = ReceivePort();
 
-  final _outputDonePort = ReceivePort();
+  final _outputController = StreamController<Uint8List>(sync: true);
+
+  late final Stream<Uint8List> _output = _outputController.stream;
 
   final _exitCodeCompleter = Completer<int>();
 
@@ -161,7 +163,7 @@ class Pty {
 
   /// The output stream from the pseudo-terminal. Note that pseudo-terminals
   /// do not distinguish between stdout and stderr.
-  Stream<Uint8List> get output => _stdoutPort.cast();
+  Stream<Uint8List> get output => _output;
 
   /// A `Future` which completes with the exit code of the process
   /// when the process completes.
@@ -272,8 +274,14 @@ class Pty {
     _completeExitAfterOutputDrain();
   }
 
-  void _onOutputDone(dynamic _) {
+  void _onNativeOutput(dynamic message) {
+    if (message is Uint8List) {
+      _outputController.add(message);
+      return;
+    }
+
     _isOutputDone = true;
+    unawaited(_outputController.close());
     _completeExitAfterOutputDrain();
   }
 
@@ -284,7 +292,6 @@ class Pty {
     }
     _stdoutPort.close();
     _exitPort.close();
-    _outputDonePort.close();
     _exitCodeCompleter.complete(exitCode);
   }
 
@@ -296,7 +303,7 @@ class Pty {
     _bindings.pty_destroy(_handle);
     _stdoutPort.close();
     _exitPort.close();
-    _outputDonePort.close();
+    unawaited(_outputController.close());
     if (!_exitCodeCompleter.isCompleted) {
       _exitCodeCompleter.complete(_nativeExitCode ?? -1);
     }
