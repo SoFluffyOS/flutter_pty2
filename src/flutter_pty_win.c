@@ -209,6 +209,12 @@ typedef struct ReadLoopOptions
 
     HANDLE hMutex;
 
+    CRITICAL_SECTION *writeMutex;
+
+    CONDITION_VARIABLE *writeCondition;
+
+    BOOL *stopping;
+
     BOOL ackRead;
 
 } ReadLoopOptions;
@@ -250,6 +256,11 @@ static DWORD WINAPI read_loop(LPVOID arg)
         if (!Dart_PostCObject_DL(options->port, &result)) break;
     }
 
+    EnterCriticalSection(options->writeMutex);
+    *options->stopping = TRUE;
+    WakeAllConditionVariable(options->writeCondition);
+    LeaveCriticalSection(options->writeMutex);
+
     Dart_PostInteger_DL(options->done_port, 0);
     free(options);
     return 0;
@@ -259,6 +270,9 @@ static HANDLE start_read_thread(HANDLE fd,
                                 Dart_Port port,
                                 Dart_Port done_port,
                                 HANDLE mutex,
+                                CRITICAL_SECTION *write_mutex,
+                                CONDITION_VARIABLE *write_condition,
+                                BOOL *stopping,
                                 BOOL ackRead)
 {
     ReadLoopOptions *options = malloc(sizeof(ReadLoopOptions));
@@ -268,6 +282,9 @@ static HANDLE start_read_thread(HANDLE fd,
     options->port = port;
     options->done_port = done_port;
     options->hMutex = mutex;
+    options->writeMutex = write_mutex;
+    options->writeCondition = write_condition;
+    options->stopping = stopping;
     options->ackRead = ackRead;
 
     DWORD thread_id;
@@ -626,6 +643,9 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
                                         options->stdout_port,
                                         options->output_done_port,
                                         mutex,
+                                        &pty->writeMutex,
+                                        &pty->writeCondition,
+                                        &pty->stopping,
                                         options->ackRead);
     pty->waitThread = start_wait_exit_thread(processInfo.hProcess, options->exit_port);
     pty->writeThread = start_write_thread(pty);
