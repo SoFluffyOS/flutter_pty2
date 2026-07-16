@@ -431,6 +431,8 @@ typedef struct PtyHandle
 
     HANDLE processHandle;
 
+    HANDLE jobHandle;
+
     HANDLE readThread;
 
     HANDLE waitThread;
@@ -494,6 +496,7 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
     HANDLE inputWriteSide = NULL;
     HANDLE outputReadSide = NULL;
     HANDLE outputWriteSide = NULL;
+    HANDLE job = NULL;
     HPCON hPty = NULL;
     STARTUPINFOEX startupInfo;
     PROCESS_INFORMATION processInfo;
@@ -527,6 +530,26 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
     if (FAILED(result))
     {
         error_message = "Failed to create pseudo console";
+        goto fail;
+    }
+
+    job = CreateJobObjectW(NULL, NULL);
+    if (job == NULL)
+    {
+        error_message = "Failed to create process job";
+        goto fail;
+    }
+
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION job_information;
+    ZeroMemory(&job_information, sizeof(job_information));
+    job_information.BasicLimitInformation.LimitFlags =
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!SetInformationJobObject(job,
+                                 JobObjectExtendedLimitInformation,
+                                 &job_information,
+                                 sizeof(job_information)))
+    {
+        error_message = "Failed to configure process job";
         goto fail;
     }
 
@@ -589,7 +612,9 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
                         NULL,
                         NULL,
                         FALSE,
-                        EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+                        EXTENDED_STARTUPINFO_PRESENT |
+                            CREATE_UNICODE_ENVIRONMENT |
+                            CREATE_SUSPENDED,
                         environment_block,
                         working_directory,
                         &startupInfo.StartupInfo,
@@ -610,6 +635,18 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
     {
         error_message = "Failed to create process";
         goto fail;
+    }
+
+    if (!AssignProcessToJobObject(job, processInfo.hProcess))
+    {
+        error_message = "Failed to assign process job";
+        goto fail_process;
+    }
+
+    if (ResumeThread(processInfo.hThread) == (DWORD)-1)
+    {
+        error_message = "Failed to resume process";
+        goto fail_process;
     }
 
     CloseHandle(processInfo.hThread);
@@ -642,6 +679,7 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
     pty->ackRead = options->ackRead;
     pty->hMutex = mutex;
     pty->processHandle = processInfo.hProcess;
+    pty->jobHandle = job;
     InitializeCriticalSection(&pty->writeMutex);
     InitializeConditionVariable(&pty->writeCondition);
 
@@ -660,7 +698,7 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
         pty->writeThread == NULL)
     {
         error_message = "Failed to start ConPTY worker threads";
-        TerminateProcess(processInfo.hProcess, 1);
+        TerminateJobObject(job, 1);
         ReleaseSemaphore(mutex, 1, NULL);
         EnterCriticalSection(&pty->writeMutex);
         pty->stopping = TRUE;
@@ -689,6 +727,7 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
             CloseHandle(pty->writeThread);
         }
         CloseHandle(processInfo.hProcess);
+        CloseHandle(job);
         CloseHandle(mutex);
         DeleteCriticalSection(&pty->writeMutex);
         free(pty);
@@ -698,6 +737,7 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
     return pty;
 
 fail_process:
+    TerminateJobObject(job, 1);
     TerminateProcess(processInfo.hProcess, 1);
     WaitForSingleObject(processInfo.hProcess, INFINITE);
 
@@ -713,6 +753,7 @@ fail:
     free(working_directory);
     if (processInfo.hThread != NULL) CloseHandle(processInfo.hThread);
     if (processInfo.hProcess != NULL) CloseHandle(processInfo.hProcess);
+    if (job != NULL) CloseHandle(job);
     if (hPty != NULL) ClosePseudoConsole(hPty);
     if (inputReadSide != NULL) CloseHandle(inputReadSide);
     if (inputWriteSide != NULL) CloseHandle(inputWriteSide);
@@ -836,42 +877,12 @@ FFI_PLUGIN_EXPORT int pty_has_running_foreground_process(PtyHandle *handle)
     return 0;
 }
 
-static void terminate_child_processes(DWORD parent_process_id)
-{
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) return;
-
-    PROCESSENTRY32 entry;
-    entry.dwSize = sizeof(PROCESSENTRY32);
-    BOOL has_entry = Process32First(snapshot, &entry);
-
-    while (has_entry)
-    {
-        if (entry.th32ParentProcessID == parent_process_id)
-        {
-            terminate_child_processes(entry.th32ProcessID);
-
-            HANDLE child = OpenProcess(PROCESS_TERMINATE, FALSE, entry.th32ProcessID);
-            if (child != NULL)
-            {
-                TerminateProcess(child, 1);
-                CloseHandle(child);
-            }
-        }
-
-        has_entry = Process32Next(snapshot, &entry);
-    }
-
-    CloseHandle(snapshot);
-}
-
 FFI_PLUGIN_EXPORT int pty_kill(PtyHandle *handle, int signal_number)
 {
     if (handle == NULL) return 0;
 
     (void)signal_number;
-    terminate_child_processes(handle->dwProcessId);
-    return TerminateProcess(handle->processHandle, 1) != 0;
+    return TerminateJobObject(handle->jobHandle, 1) != 0;
 }
 
 FFI_PLUGIN_EXPORT char *pty_error()
@@ -887,8 +898,7 @@ FFI_PLUGIN_EXPORT void pty_destroy(PtyHandle *handle)
     handle->stopping = TRUE;
     WakeAllConditionVariable(&handle->writeCondition);
     LeaveCriticalSection(&handle->writeMutex);
-    terminate_child_processes(handle->dwProcessId);
-    TerminateProcess(handle->processHandle, 1);
+    TerminateJobObject(handle->jobHandle, 1);
     ReleaseSemaphore(handle->hMutex, 1, NULL);
     CancelSynchronousIo(handle->readThread);
     CancelSynchronousIo(handle->writeThread);
@@ -902,6 +912,7 @@ FFI_PLUGIN_EXPORT void pty_destroy(PtyHandle *handle)
     CloseHandle(handle->waitThread);
     CloseHandle(handle->writeThread);
     CloseHandle(handle->processHandle);
+    CloseHandle(handle->jobHandle);
     CloseHandle(handle->hMutex);
     WriteChunk *chunk = handle->writeHead;
     while (chunk != NULL)
