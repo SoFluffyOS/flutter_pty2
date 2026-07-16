@@ -234,6 +234,10 @@ static void *read_loop(void *arg)
         if (!Dart_PostCObject_DL(options->port, &result)) break;
     }
 
+    pthread_mutex_lock(&handle->mutex);
+    handle->stopping = true;
+    pthread_mutex_unlock(&handle->mutex);
+
     Dart_PostInteger_DL(options->done_port, 0);
     free(options);
     return NULL;

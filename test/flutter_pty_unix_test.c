@@ -193,6 +193,7 @@ int main(int argc, char **argv)
     assert(output[1] == 'B');
     pty_ack_read(handle);
     assert(wait_for_exit(2000));
+    assert(pty_write(handle, "x", 1) == 0);
 
     pty_destroy(handle);
 
