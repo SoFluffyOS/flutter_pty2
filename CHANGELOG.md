@@ -1,3 +1,10 @@
+## 1.0.1
+
+* Preserve trailing PTY output and reject writes after output closes.
+* Surface resize and child startup failures reliably.
+* Harden Unix environment, UTF-8 input, and concurrent native errors.
+* Improve ConPTY shutdown and contain Windows process trees.
+
 ## 1.0.0
 
 * Rename package to `flutter_pty2` for the maintained fork.
