@@ -480,9 +480,18 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
 
     int wake_read_flags = fcntl(handle->wake_pipe[0], F_GETFL);
     int wake_write_flags = fcntl(handle->wake_pipe[1], F_GETFL);
+    int wake_read_fd_flags = fcntl(handle->wake_pipe[0], F_GETFD);
+    int wake_write_fd_flags = fcntl(handle->wake_pipe[1], F_GETFD);
     if (wake_read_flags < 0 || wake_write_flags < 0 ||
+        wake_read_fd_flags < 0 || wake_write_fd_flags < 0 ||
         fcntl(handle->wake_pipe[0], F_SETFL, wake_read_flags | O_NONBLOCK) < 0 ||
-        fcntl(handle->wake_pipe[1], F_SETFL, wake_write_flags | O_NONBLOCK) < 0)
+        fcntl(handle->wake_pipe[1], F_SETFL, wake_write_flags | O_NONBLOCK) < 0 ||
+        fcntl(handle->wake_pipe[0],
+              F_SETFD,
+              wake_read_fd_flags | FD_CLOEXEC) < 0 ||
+        fcntl(handle->wake_pipe[1],
+              F_SETFD,
+              wake_write_fd_flags | FD_CLOEXEC) < 0)
     {
         int error_number = errno;
         close(handle->wake_pipe[0]);

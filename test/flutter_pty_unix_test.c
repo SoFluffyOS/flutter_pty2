@@ -149,6 +149,25 @@ static int count_open_descriptors(void)
     return count;
 }
 
+static void snapshot_open_descriptors(bool descriptors[256])
+{
+    for (int fd = 0; fd < 256; fd++)
+    {
+        descriptors[fd] = fcntl(fd, F_GETFD) != -1;
+    }
+}
+
+static void assert_new_descriptors_close_on_exec(
+    const bool descriptors_before[256])
+{
+    for (int fd = 0; fd < 256; fd++)
+    {
+        int flags = fcntl(fd, F_GETFD);
+        if (flags == -1 || descriptors_before[fd]) continue;
+        assert((flags & FD_CLOEXEC) != 0);
+    }
+}
+
 static int run_winsize_child(void)
 {
     char input;
@@ -234,8 +253,11 @@ int main(int argc, char **argv)
         .ackRead = true,
     };
 
+    bool descriptors_before_pty[256];
+    snapshot_open_descriptors(descriptors_before_pty);
     PtyHandle *handle = pty_create(&options);
     assert(handle != NULL);
+    assert_new_descriptors_close_on_exec(descriptors_before_pty);
     assert(wait_for_output(1, 2000));
     assert(output[0] == 'A');
     assert(!wait_for_output(2, 500));

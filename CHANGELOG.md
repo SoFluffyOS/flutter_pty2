@@ -1,3 +1,7 @@
+## [Unreleased]
+
+* Prevent Unix PTY wake descriptors from leaking into child processes.
+
 ## 1.0.1
 
 * Preserve trailing PTY output and reject writes after output closes.
