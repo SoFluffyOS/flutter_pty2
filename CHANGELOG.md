@@ -1,4 +1,4 @@
-## [Unreleased]
+## 1.0.2
 
 * Prevent Unix PTY wake descriptors from leaking into child processes.
 
