@@ -162,10 +162,17 @@ static void *read_loop(void *arg)
 
         if (stopping) break;
 
+        int ptm_fd = handle->ptm;
+        short ptm_events = POLLIN;
+        if (has_pending_writes) ptm_events |= POLLOUT;
+        if (awaiting_read_ack)
+        {
+            ptm_fd = -1;
+            ptm_events = 0;
+        }
+
         struct pollfd descriptors[2] = {
-            { .fd = handle->ptm,
-              .events = (awaiting_read_ack ? 0 : POLLIN) |
-                        (has_pending_writes ? POLLOUT : 0) },
+            { .fd = ptm_fd, .events = ptm_events },
             { .fd = handle->wake_pipe[0], .events = POLLIN },
         };
 

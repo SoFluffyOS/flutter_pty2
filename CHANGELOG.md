@@ -1,3 +1,7 @@
+## (Unreleased)
+
+* Preserve buffered Unix output when a child exits during read backpressure.
+
 ## 1.0.2
 
 * Prevent Unix PTY wake descriptors from leaking into child processes.

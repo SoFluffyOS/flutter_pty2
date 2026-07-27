@@ -16,7 +16,10 @@
 
 static pthread_mutex_t event_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t event_condition = PTHREAD_COND_INITIALIZER;
-static char output[32];
+#define OUTPUT_CAPACITY (64 * 1024)
+#define EXIT_BACKPRESSURE_OUTPUT_LENGTH (32 * 1024)
+
+static char output[OUTPUT_CAPACITY];
 static size_t output_length;
 static bool exited;
 static bool output_done;
@@ -112,6 +115,14 @@ static bool wait_for_output(size_t length, long timeout_milliseconds)
     bool received = output_length >= length;
     pthread_mutex_unlock(&event_mutex);
     return received;
+}
+
+static size_t current_output_length(void)
+{
+    pthread_mutex_lock(&event_mutex);
+    size_t length = output_length;
+    pthread_mutex_unlock(&event_mutex);
+    return length;
 }
 
 static bool wait_for_exit(long timeout_milliseconds)
@@ -269,6 +280,31 @@ int main(int argc, char **argv)
     assert(wait_for_exit(2000));
     assert(pty_write(handle, "x", 1) == 0);
 
+    pty_destroy(handle);
+
+    reset_events();
+    arguments[2] = "head -c 32768 /dev/zero | tr '\\0' Z";
+
+    handle = pty_create(&options);
+    assert(handle != NULL);
+    assert(wait_for_output(1, 2000));
+    assert(!wait_for_exit(200));
+
+    size_t received = current_output_length();
+    while (received < EXIT_BACKPRESSURE_OUTPUT_LENGTH)
+    {
+        pty_ack_read(handle);
+        assert(wait_for_output(received + 1, 2000));
+        received = current_output_length();
+    }
+    assert(received == EXIT_BACKPRESSURE_OUTPUT_LENGTH);
+    for (size_t index = 0; index < received; index++)
+    {
+        assert(output[index] == 'Z');
+    }
+    pty_ack_read(handle);
+    assert(wait_for_exit(2000));
+    assert(exit_value == 0);
     pty_destroy(handle);
 
     reset_events();
