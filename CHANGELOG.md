@@ -1,6 +1,7 @@
 ## (Unreleased)
 
 * Preserve buffered Unix output when a child exits during read backpressure.
+* Add Swift Package Manager support for iOS and macOS.
 
 ## 1.0.2
 

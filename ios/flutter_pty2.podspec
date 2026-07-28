@@ -13,12 +13,10 @@ Flutter FFI pseudo-terminal plugin for spawning and controlling terminal process
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'SoFluffy' => 'hi@sofluffy.io' }
 
-  # This will ensure the source files in Classes/ are included in the native
-  # builds of apps using this FFI plugin. Podspec does not support relative
-  # paths, so Classes contains a forwarder C file that relatively imports
-  # `../src/*` so that the C sources can be shared among all target platforms.
+  # The forwarder C file imports the shared sources from `../src/*` so both
+  # CocoaPods and Swift Package Manager build the same implementation.
   s.source           = { :path => '.' }
-  s.source_files = 'Classes/**/*'
+  s.source_files = 'flutter_pty2/Sources/flutter_pty2/**/*'
   s.dependency 'Flutter'
   s.platform = :ios, '9.0'
 

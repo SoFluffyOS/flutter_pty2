@@ -27,5 +27,7 @@
 .dart_tool/
 .packages
 build/
+.build/
+.swiftpm/
 
 .vscode
