@@ -20,7 +20,7 @@ The package requires Dart 3 and Flutter 3.10 or newer.
 
 | Linux | macOS | Windows | Android |
 | :---: | :---: | :-----: | :-----: |
-|   ✔️   |   ✔️   |    🧪    |    🧪    |
+|   ✔️   |   ✔️   |    🧪    |    ✔️    |
 
 ## Quick start
 
@@ -91,9 +91,9 @@ legacy manual-acknowledgement semantics and is not the 2.0 API.
 Unix has the native async session, bounded input queue, output credits,
 structured errors, and lifecycle stress coverage. Windows has the ConPTY,
 Job Object, and worker implementation plus a host smoke test, but requires
-runtime verification on Windows. Android now has an `arm64-v8a` NDK build
-path, but its clean-slate runtime still requires emulator/device verification.
-iOS clean-slate runtime support is not yet claimed.
+runtime verification on Windows. Android has an `arm64-v8a` NDK build path and
+has passed the clean-slate output and input integration subset on an API 35
+emulator. iOS clean-slate runtime support is not yet claimed.
 
 ---
 
