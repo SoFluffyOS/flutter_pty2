@@ -99,11 +99,19 @@ static int wait_for_zero_resources(void)
     return 0;
 }
 
+static DWORD process_handle_count(void)
+{
+    DWORD count = 0;
+    assert(GetProcessHandleCount(GetCurrentProcess(), &count));
+    return count;
+}
+
 int main(void)
 {
     InitializeCriticalSection(&events.mutex);
     InitializeConditionVariable(&events.condition);
     Dart_PostCObject_DL = post_object;
+    const DWORD baseline_handle_count = process_handle_count();
 
     int cycle_count = 1000;
     const char *configured_cycle_count = getenv("PTY_WINDOWS_STRESS_CYCLES");
@@ -152,6 +160,7 @@ int main(void)
     assert(stats.live_close_workers == 0);
     assert(stats.pending_write_chunks == 0);
     assert(stats.pending_write_bytes == 0);
+    assert(process_handle_count() == baseline_handle_count);
     DeleteCriticalSection(&events.mutex);
     return 0;
 }
