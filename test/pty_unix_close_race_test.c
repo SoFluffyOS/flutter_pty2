@@ -5,6 +5,7 @@
 
 #include "../src/flutter_pty.h"
 #include "../src/include/dart_api_dl.h"
+#include "../src/pty_internal.h"
 
 static pthread_mutex_t events_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t events_condition = PTHREAD_COND_INITIALIZER;
@@ -87,6 +88,7 @@ int main(void)
     assert(session != NULL);
 
     assert(wait_for_spawn());
+    pty_session_mark_closing(session);
     pty_session_begin_close(session);
     pty_session_begin_close(session);
     assert(wait_for_close());

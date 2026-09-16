@@ -1019,7 +1019,10 @@ FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
         InterlockedExchange(&session->lifecycle, PTY_LIFECYCLE_CLOSING);
         return;
     }
-    if (lifecycle != PTY_LIFECYCLE_RUNNING) return;
+    if (lifecycle != PTY_LIFECYCLE_RUNNING &&
+        lifecycle != PTY_LIFECYCLE_CLOSING) {
+        return;
+    }
     PtyWindowsPlatform *platform = windows_platform(session);
     if (platform == NULL) return;
     EnterCriticalSection(&platform->mutex);

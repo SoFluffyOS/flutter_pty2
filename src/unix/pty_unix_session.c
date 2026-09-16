@@ -797,13 +797,17 @@ FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
         pty_session_mark_closing(session);
         return;
     }
-    if (lifecycle != PTY_LIFECYCLE_RUNNING) return;
-    int expected_lifecycle = PTY_LIFECYCLE_RUNNING;
-    if (!atomic_compare_exchange_strong_explicit(&session->lifecycle,
-                                                 &expected_lifecycle,
-                                                 PTY_LIFECYCLE_CLOSING,
-                                                 memory_order_acq_rel,
-                                                 memory_order_acquire)) {
+    if (lifecycle == PTY_LIFECYCLE_RUNNING) {
+        int expected_lifecycle = PTY_LIFECYCLE_RUNNING;
+        if (!atomic_compare_exchange_strong_explicit(
+                &session->lifecycle,
+                &expected_lifecycle,
+                PTY_LIFECYCLE_CLOSING,
+                memory_order_acq_rel,
+                memory_order_acquire)) {
+            return;
+        }
+    } else if (lifecycle != PTY_LIFECYCLE_CLOSING) {
         return;
     }
     PtyUnixPlatform *platform = platform_for(session);
