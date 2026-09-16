@@ -490,6 +490,7 @@ void main() {
       );
       session.resize(const PtySize(columns: 120, rows: 40));
       session.kill();
+      session.kill();
 
       final exit = await session.processExit.timeout(
         const Duration(seconds: 5),
