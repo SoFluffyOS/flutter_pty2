@@ -457,6 +457,41 @@ static void windows_finish_unstarted_close(PtySession *session,
     pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
 }
 
+static void windows_finish_worker_startup_failure(PtySession *session,
+                                                  HANDLE process_thread,
+                                                  const PtyError *error)
+{
+    PtyWindowsPlatform *platform = windows_platform(session);
+    if (platform == NULL) return;
+
+    windows_stop_process(platform);
+    if (process_thread != NULL) {
+        ResumeThread(process_thread);
+        CloseHandle(process_thread);
+    }
+    if (platform->reader_started) {
+        WaitForSingleObject(platform->reader_thread, INFINITE);
+    }
+    if (platform->writer_started) {
+        WaitForSingleObject(platform->writer_thread, INFINITE);
+    }
+    if (platform->waiter_started) {
+        WaitForSingleObject(platform->waiter_thread, INFINITE);
+    }
+    EnterCriticalSection(&platform->mutex);
+    if (!platform->reader_started) platform->reader_done = 1;
+    if (!platform->writer_started) platform->writer_done = 1;
+    if (!platform->waiter_started) platform->waiter_done = 1;
+    platform->close_done = 1;
+    LeaveCriticalSection(&platform->mutex);
+
+    pty_session_mark_closing(session);
+    pty_post_spawn_failed(session->event_port, error);
+    windows_mark_output_closed(session);
+    windows_mark_input_closed(session, NULL);
+    windows_maybe_post_closed(session);
+}
+
 static DWORD WINAPI windows_close_worker(void *argument)
 {
     PtySession *session = argument;
@@ -784,28 +819,12 @@ static DWORD WINAPI windows_bootstrap(void *argument)
     }
     if (!platform->reader_started || !platform->writer_started ||
         !platform->waiter_started) {
-        windows_stop_process(platform);
-        ResumeThread(process_thread);
-        CloseHandle(process_thread);
-        if (platform->reader_started) WaitForSingleObject(platform->reader_thread, INFINITE);
-        if (platform->writer_started) WaitForSingleObject(platform->writer_thread, INFINITE);
-        if (platform->waiter_started) WaitForSingleObject(platform->waiter_thread, INFINITE);
-        EnterCriticalSection(&platform->mutex);
-        if (!platform->reader_started) platform->reader_done = 1;
-        if (!platform->writer_started) platform->writer_done = 1;
-        if (!platform->waiter_started) platform->waiter_done = 1;
-        platform->close_done = 1;
-        LeaveCriticalSection(&platform->mutex);
         pty_error_set(&error,
                       PTY_ERROR_DOMAIN_INTERNAL,
                       PTY_ERROR_INTERNAL,
                       GetLastError(),
                       "starting Windows PTY workers failed");
-        pty_session_mark_closing(session);
-        pty_post_spawn_failed(session->event_port, &error);
-        windows_mark_output_closed(session);
-        windows_mark_input_closed(session, NULL);
-        windows_maybe_post_closed(session);
+        windows_finish_worker_startup_failure(session, process_thread, &error);
         windows_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
@@ -838,10 +857,7 @@ static DWORD WINAPI windows_bootstrap(void *argument)
                       PTY_ERROR_SPAWN_FAILED,
                       GetLastError(),
                       "resuming ConPTY process failed");
-        pty_post_spawn_failed(session->event_port, &error);
-        InterlockedExchange(&session->lifecycle, PTY_LIFECYCLE_CLOSING);
-        windows_stop_process(platform);
-        CloseHandle(process_thread);
+        windows_finish_worker_startup_failure(session, process_thread, &error);
         windows_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
