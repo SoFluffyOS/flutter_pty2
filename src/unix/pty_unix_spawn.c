@@ -255,12 +255,16 @@ static char *join_path(const char *directory, const char *name)
     const int needs_separator = directory_length != 0 &&
                                 directory[directory_length - 1] != '/';
     if (directory_length > SIZE_MAX - name_length - (size_t)needs_separator - 1) {
+        errno = ENAMETOOLONG;
         return NULL;
     }
     const size_t length = directory_length + name_length +
                           (size_t)needs_separator + 1;
     char *result = malloc(length);
-    if (result == NULL) return NULL;
+    if (result == NULL) {
+        errno = ENOMEM;
+        return NULL;
+    }
     memcpy(result, directory, directory_length);
     size_t offset = directory_length;
     if (needs_separator) result[offset++] = '/';
@@ -277,7 +281,7 @@ static int access_path(const char *path, const char *working_directory)
     }
     char *absolute_path = join_path(working_directory, path);
     if (absolute_path == NULL) {
-        errno = ENAMETOOLONG;
+        if (errno == 0) errno = ENOMEM;
         return -1;
     }
     const int result = access(absolute_path, X_OK);
@@ -331,17 +335,34 @@ static char *resolve_executable(const PtySpawnOptions *options,
         if (directory[0] == '\0') {
             free(directory);
             directory = copy_string(".");
+            if (directory == NULL) {
+                pty_error_set(error,
+                              PTY_ERROR_DOMAIN_INTERNAL,
+                              PTY_ERROR_OUT_OF_MEMORY,
+                              ENOMEM,
+                              "allocating empty PATH entry failed");
+                return NULL;
+            }
         }
         char *candidate = join_path(directory, executable);
-        const int candidate_error = candidate == NULL ? ENAMETOOLONG : errno;
-        const int executable_exists = candidate != NULL &&
-                                      access_path(candidate,
-                                                  options->working_directory) == 0;
+        if (candidate == NULL) {
+            const int error_number = errno == 0 ? ENOMEM : errno;
+            free(directory);
+            pty_error_set_errno(
+                error,
+                error_number == ENAMETOOLONG ? PTY_ERROR_NOT_FOUND
+                                               : PTY_ERROR_OUT_OF_MEMORY,
+                error_number,
+                "building executable PATH candidate failed");
+            return NULL;
+        }
+        const int executable_exists =
+            access_path(candidate, options->working_directory) == 0;
         const int access_error = errno;
         free(directory);
         if (executable_exists) return candidate;
         free(candidate);
-        errno = candidate_error != 0 ? candidate_error : access_error;
+        errno = access_error;
         if (separator == NULL) break;
         start = separator + 1;
     }

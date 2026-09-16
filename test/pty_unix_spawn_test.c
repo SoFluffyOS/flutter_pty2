@@ -32,7 +32,8 @@ static PtySpawnOptions base_options(const char *executable,
 }
 
 static void assert_spawn_failure(const PtySpawnOptions *options,
-                                 PtyErrorKind expected_kind)
+                                 PtyErrorKind expected_kind,
+                                 int64_t expected_code)
 {
     int master_fd = -1;
     int slave_fd = -1;
@@ -47,6 +48,7 @@ static void assert_spawn_failure(const PtySpawnOptions *options,
     assert(slave_fd == -1);
     assert(process_id == -1);
     assert(error.kind == (int32_t)expected_kind);
+    assert(error.os_code == expected_code);
 }
 
 static void assert_fd_three_is_not_inherited(void)
@@ -145,13 +147,16 @@ int main(void)
         missing_arguments,
         0,
         NULL);
-    assert_spawn_failure(&missing, PTY_ERROR_NOT_FOUND);
+    errno = EACCES;
+    assert_spawn_failure(&missing, PTY_ERROR_NOT_FOUND, ENOENT);
 
     const PtySpawnOptions bad_directory = base_options(
         "/bin/sh",
         missing_arguments,
         0,
         "/path/that/does/not/exist");
-    assert_spawn_failure(&bad_directory, PTY_ERROR_WORKING_DIRECTORY);
+    assert_spawn_failure(&bad_directory,
+                         PTY_ERROR_WORKING_DIRECTORY,
+                         ENOENT);
     return 0;
 }
