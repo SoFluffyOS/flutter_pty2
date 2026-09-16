@@ -627,4 +627,23 @@ void main() {
     },
     skip: nativeSkipReason,
   );
+
+  test(
+    'reports a crashed child as a signal exit',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(executable: child, arguments: const ['crash']),
+      );
+      final processExit = await session.processExit;
+      final done = await session.done;
+      await session.close();
+
+      expect(processExit, isA<PtySignalExit>());
+      if (processExit case PtySignalExit(:final signal)) expect(signal, 11);
+      expect(done, processExit);
+    },
+    skip: skipReason,
+  );
 }

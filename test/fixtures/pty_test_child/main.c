@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -212,6 +213,10 @@ int main(int argc, char **argv)
         fputs(argv[3], stdout);
         if (fflush(stdout) != 0) return 3;
         return (int)parse_count(argv[2]);
+    }
+    if (strcmp(argv[1], "crash") == 0 && argc == 2) {
+        raise(SIGSEGV);
+        return 3;
     }
 
     fprintf(stderr, "invalid command\n");
