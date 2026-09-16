@@ -189,11 +189,15 @@ static int pty_unix_flush_write_queue(PtySession *session)
 {
     PtyUnixPlatform *platform = platform_for(session);
     if (platform == NULL) return 0;
+    pthread_mutex_lock(&platform->mutex);
+    const int master_fd = platform->master_fd;
+    pthread_mutex_unlock(&platform->mutex);
+    if (master_fd < 0) return 0;
     while (true) {
         PtyWriteChunk *chunk = pty_write_queue_dequeue(&platform->write_queue);
         if (chunk == NULL) return 1;
         while (chunk->offset < chunk->length) {
-            const ssize_t result = write(platform->master_fd,
+            const ssize_t result = write(master_fd,
                                          chunk->bytes + chunk->offset,
                                          chunk->length - chunk->offset);
             if (result > 0) {
@@ -243,25 +247,20 @@ static int read_output(PtySession *session)
     uint8_t buffer[PTY_REACTOR_BUFFER_SIZE];
     pthread_mutex_lock(&platform->mutex);
     const int discard = platform->discard_output;
+    const int master_fd = platform->master_fd;
     uint64_t credit = session->output_credit;
-    if (!discard && credit < sizeof(buffer)) {
-        /* A zero credit means the reactor should not have been polled. */
-        if (credit == 0) {
-            pthread_mutex_unlock(&platform->mutex);
-            return 1;
-        }
+    if (master_fd < 0 || (!discard && credit == 0)) {
+        pthread_mutex_unlock(&platform->mutex);
+        return 1;
     }
-    pthread_mutex_unlock(&platform->mutex);
-
     size_t capacity = sizeof(buffer);
-    pthread_mutex_lock(&platform->mutex);
     if (!platform->discard_output && session->output_credit < capacity) {
         capacity = (size_t)session->output_credit;
     }
     pthread_mutex_unlock(&platform->mutex);
     if (capacity == 0) return 1;
 
-    const ssize_t result = read(platform->master_fd, buffer, capacity);
+    const ssize_t result = read(master_fd, buffer, capacity);
     if (result > 0) {
         if (!discard) {
             pthread_mutex_lock(&platform->mutex);
@@ -298,15 +297,17 @@ static void *reactor_worker(void *argument)
         const int discard = platform->discard_output;
         const int has_writes = pty_write_queue_pending_bytes(&platform->write_queue) != 0;
         const uint64_t credit = session->output_credit;
+        const int master_fd = platform->master_fd;
+        const int wake_fd = platform->wake_pipe[0];
         pthread_mutex_unlock(&platform->mutex);
-        if (stopping) break;
+        if (stopping || master_fd < 0) break;
 
         short events = 0;
         if (discard || credit > 0) events |= POLLIN;
         if (has_writes) events |= POLLOUT;
         struct pollfd descriptors[2] = {
-            {.fd = platform->master_fd, .events = events},
-            {.fd = platform->wake_pipe[0], .events = POLLIN},
+            {.fd = master_fd, .events = events},
+            {.fd = wake_fd, .events = POLLIN},
         };
         int poll_result;
         do {
@@ -338,11 +339,12 @@ static void *reactor_worker(void *argument)
     }
     mark_output_closed(session);
     mark_input_closed(session, NULL);
-    close(platform->master_fd);
-    platform->master_fd = -1;
     pthread_mutex_lock(&platform->mutex);
+    const int master_fd = platform->master_fd;
+    platform->master_fd = -1;
     platform->reactor_done = 1;
     pthread_mutex_unlock(&platform->mutex);
+    if (master_fd >= 0) close(master_fd);
     pty_debug_worker_finished(PTY_DEBUG_WORKER_READ);
     maybe_post_session_closed(session);
     pty_session_release(session);
@@ -407,10 +409,14 @@ static void discard_unix_platform(PtySession *session)
 static void stop_process(PtyUnixPlatform *platform)
 {
     if (platform == NULL || platform->process_id <= 0) return;
-    const pid_t foreground = tcgetpgrp(platform->master_fd);
+    pthread_mutex_lock(&platform->mutex);
+    const int master_fd = platform->master_fd;
+    const pid_t process_id = platform->process_id;
+    const pid_t foreground = master_fd >= 0 ? tcgetpgrp(master_fd) : -1;
     if (foreground > 0) kill(-foreground, SIGKILL);
-    kill(-platform->process_id, SIGKILL);
-    kill(platform->process_id, SIGKILL);
+    kill(-process_id, SIGKILL);
+    kill(process_id, SIGKILL);
+    pthread_mutex_unlock(&platform->mutex);
 }
 
 static void *close_worker(void *argument)
@@ -708,7 +714,7 @@ FFI_PLUGIN_EXPORT int32_t pty_session_resize(PtySession *session,
 {
     pty_error_clear(out_error);
     PtyUnixPlatform *platform = platform_for(session);
-    if (platform == NULL || platform->master_fd < 0) {
+    if (platform == NULL) {
         pty_error_set(out_error, PTY_ERROR_DOMAIN_INTERNAL, PTY_ERROR_CLOSED,
                       EPIPE, "PTY session is closed");
         return 0;
@@ -719,8 +725,18 @@ FFI_PLUGIN_EXPORT int32_t pty_session_resize(PtySession *session,
         .ws_xpixel = (unsigned short)size.pixel_width,
         .ws_ypixel = (unsigned short)size.pixel_height,
     };
-    if (ioctl(platform->master_fd, TIOCSWINSZ, &window) != 0) {
-        pty_error_set_errno(out_error, PTY_ERROR_IO, errno,
+    pthread_mutex_lock(&platform->mutex);
+    const int master_fd = platform->master_fd;
+    const int result = master_fd >= 0 ? ioctl(master_fd, TIOCSWINSZ, &window) : -1;
+    const int error_number = errno;
+    pthread_mutex_unlock(&platform->mutex);
+    if (result != 0) {
+        if (master_fd < 0) {
+            pty_error_set(out_error, PTY_ERROR_DOMAIN_INTERNAL, PTY_ERROR_CLOSED,
+                          EPIPE, "PTY session is closed");
+            return 0;
+        }
+        pty_error_set_errno(out_error, PTY_ERROR_IO, error_number,
                             "resizing PTY failed");
         return 0;
     }
@@ -760,19 +776,26 @@ FFI_PLUGIN_EXPORT int32_t pty_session_send_signal(PtySession *session,
                       EPIPE, "PTY session is closed");
         return 0;
     }
-    pid_t target_pid = platform->process_id;
-    if (target == 1) target_pid = -platform->process_id;
+    pthread_mutex_lock(&platform->mutex);
+    const pid_t process_id = platform->process_id;
+    pid_t target_pid = process_id;
+    if (target == 1) target_pid = -process_id;
     if (target == 2) {
-        const pid_t foreground = tcgetpgrp(platform->master_fd);
+        const int master_fd = platform->master_fd;
+        const pid_t foreground = master_fd >= 0 ? tcgetpgrp(master_fd) : -1;
         if (foreground <= 0) {
+            pthread_mutex_unlock(&platform->mutex);
             pty_error_set_errno(out_error, PTY_ERROR_IO, errno,
                                 "finding foreground process group failed");
             return 0;
         }
         target_pid = -foreground;
     }
-    if (kill(target_pid, signal_number) != 0 && errno != ESRCH) {
-        pty_error_set_errno(out_error, PTY_ERROR_IO, errno,
+    const int result = kill(target_pid, signal_number);
+    const int error_number = errno;
+    pthread_mutex_unlock(&platform->mutex);
+    if (result != 0 && error_number != ESRCH) {
+        pty_error_set_errno(out_error, PTY_ERROR_IO, error_number,
                             "sending POSIX signal failed");
         return 0;
     }
