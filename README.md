@@ -60,8 +60,9 @@ legacy manual-acknowledgement semantics and is not the 2.0 API.
 Unix has the native async session, bounded input queue, output credits,
 structured errors, and lifecycle stress coverage. Windows has the ConPTY,
 Job Object, and worker implementation plus a host smoke test, but requires
-runtime verification on Windows. Android and iOS clean-slate runtime support
-are not yet claimed.
+runtime verification on Windows. Android now has an `arm64-v8a` NDK build
+path, but its clean-slate runtime still requires emulator/device verification.
+iOS clean-slate runtime support is not yet claimed.
 
 ---
 
