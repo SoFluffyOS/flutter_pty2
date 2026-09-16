@@ -2,12 +2,12 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_pty2/src/generated/flutter_pty_bindings_generated.dart'
     as native;
+import 'package:flutter_pty2/src/internal/input_flow_controller.dart';
 import 'package:flutter_pty2/src/internal/native_event.dart';
 import 'package:flutter_pty2/src/internal/native_event_pump.dart';
 import 'package:flutter_pty2/src/internal/output_flow_controller.dart';
@@ -148,7 +148,7 @@ final class _FfiPtySession
       acknowledge: (bytes) => bindings.pty_session_ack_output(handle, bytes),
       discardOutput: () => bindings.pty_session_discard_output(handle),
     );
-    _input = _FfiPtyInput(this);
+    _input = InputFlowController(nativeTryWrite: _tryWrite);
   }
 
   final Pointer<native.PtySession> handle;
@@ -161,7 +161,7 @@ final class _FfiPtySession
   final _doneCompleter = Completer<PtyExit>();
   final _closedCompleter = Completer<void>();
   late final OutputFlowController _output;
-  late final _FfiPtyInput _input;
+  late final InputFlowController _input;
   late final NativeEventPump _eventPump;
   PtyExit? _processExit;
   bool _outputClosed = false;
@@ -337,8 +337,8 @@ final class _FfiPtySession
     await _eventPump.close();
   }
 
-  void tryWrite(Uint8List data, int requestId, Completer<void>? completion) {
-    using((arena) {
+  PtyWriteResult _tryWrite(int requestId, Uint8List data) {
+    return using((arena) {
       final nativeBytes = arena<Uint8>(data.length);
       nativeBytes.asTypedList(data.length).setAll(0, data);
       final error = arena<native.PtyError>();
@@ -353,100 +353,13 @@ final class _FfiPtySession
         throw PtyIoException('Writing to PTY failed',
             nativeError: _readNativeError(error.ref));
       }
-      if (completion != null &&
-          result == native.PtyTryWriteResult.PTY_WRITE_ACCEPTED) {
-        _input.registerCompletion(requestId, completion);
-      }
-      _input.setLastResult(result);
+      return switch (result) {
+        native.PtyTryWriteResult.PTY_WRITE_ACCEPTED => PtyWriteResult.accepted,
+        native.PtyTryWriteResult.PTY_WRITE_BACKPRESSURED =>
+          PtyWriteResult.backpressured,
+        _ => PtyWriteResult.closed,
+      };
     });
-  }
-}
-
-final class _FfiPtyInput implements PtyInput {
-  _FfiPtyInput(this._session);
-
-  final _FfiPtySession _session;
-  final _completions = <int, Completer<void>>{};
-  Completer<void>? _writable;
-  int _nextRequestId = 1;
-  int _lastResult = native.PtyTryWriteResult.PTY_WRITE_CLOSED;
-  PtyIoException? _closedError;
-
-  @override
-  Future<void> write(Uint8List data) async {
-    var offset = 0;
-    while (offset < data.length) {
-      final end = math.min(offset + 64 * 1024, data.length);
-      final chunk = Uint8List.sublistView(data, offset, end);
-      final requestId = _nextRequestId++;
-      final completion = Completer<void>();
-      while (true) {
-        _session.tryWrite(chunk, requestId, completion);
-        if (_lastResult == native.PtyTryWriteResult.PTY_WRITE_ACCEPTED) break;
-        if (_lastResult == native.PtyTryWriteResult.PTY_WRITE_CLOSED) {
-          throw _closedError ?? const PtyClosedException();
-        }
-        await _waitWritable();
-      }
-      await completion.future;
-      offset = end;
-    }
-  }
-
-  @override
-  PtyWriteResult tryWrite(Uint8List data) {
-    if (data.isEmpty) return PtyWriteResult.accepted;
-    final requestId = _nextRequestId++;
-    try {
-      _session.tryWrite(data, requestId, null);
-    } on PtyIoException {
-      return PtyWriteResult.closed;
-    }
-    return switch (_lastResult) {
-      native.PtyTryWriteResult.PTY_WRITE_ACCEPTED => PtyWriteResult.accepted,
-      native.PtyTryWriteResult.PTY_WRITE_BACKPRESSURED =>
-        PtyWriteResult.backpressured,
-      _ => PtyWriteResult.closed,
-    };
-  }
-
-  @override
-  Future<void> flush() async {
-    await Future.wait(
-        _completions.values.map((completion) => completion.future));
-  }
-
-  void registerCompletion(int requestId, Completer<void> completion) {
-    _completions[requestId] = completion;
-  }
-
-  void handleWriteComplete(int requestId) {
-    _completions.remove(requestId)?.complete();
-    _writable?.complete();
-    _writable = null;
-  }
-
-  void handleWritable() {
-    _writable?.complete();
-    _writable = null;
-  }
-
-  void handleClosed(PtyIoException error) {
-    _closedError = error;
-    for (final completion in _completions.values) {
-      completion.completeError(error);
-    }
-    _completions.clear();
-    _writable?.completeError(error);
-    _writable = null;
-  }
-
-  Future<void> _waitWritable() {
-    return (_writable ??= Completer<void>()).future;
-  }
-
-  void setLastResult(int result) {
-    _lastResult = result;
   }
 }
 

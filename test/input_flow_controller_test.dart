@@ -1,0 +1,69 @@
+import 'dart:typed_data';
+
+import 'package:flutter_pty2/src/internal/input_flow_controller.dart';
+import 'package:flutter_pty2/src/pty_exception.dart';
+import 'package:flutter_pty2/src/pty_input.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('serializes chunks and resumes after native backpressure', () async {
+    final requests = <int>[];
+    var backpressured = true;
+    final input = InputFlowController(
+      maxChunkSize: 3,
+      nativeTryWrite: (requestId, bytes) {
+        requests.add(requestId);
+        if (requestId == 2 && backpressured) {
+          return PtyWriteResult.backpressured;
+        }
+        return PtyWriteResult.accepted;
+      },
+    );
+
+    final write = input.write(Uint8List.fromList([1, 2, 3, 4, 5, 6, 7]));
+    expect(requests, [1, 2]);
+    input.handleWriteComplete(1);
+    expect(requests, [1, 2]);
+    backpressured = false;
+    input.handleWritable();
+    expect(requests, [1, 2, 2, 3]);
+    input.handleWriteComplete(2);
+    input.handleWriteComplete(3);
+    await write;
+  });
+
+  test('flush waits only for writes submitted before it', () async {
+    final input = InputFlowController(
+      nativeTryWrite: (_, __) => PtyWriteResult.accepted,
+    );
+    expect(input.tryWrite(Uint8List.fromList([1])), PtyWriteResult.accepted);
+    final flush = input.flush();
+    var completed = false;
+    flush.then((_) => completed = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(completed, isFalse);
+    input.handleWriteComplete(1);
+    await flush;
+  });
+
+  test('closes all pending writes with the same error', () async {
+    final input = InputFlowController(
+      nativeTryWrite: (_, __) => PtyWriteResult.accepted,
+    );
+    final write = input.write(Uint8List.fromList([1]));
+    input.handleClosed(const PtyClosedException());
+    await expectLater(write, throwsA(isA<PtyClosedException>()));
+    expect(input.tryWrite(Uint8List.fromList([2])), PtyWriteResult.closed);
+  });
+
+  test('tryWrite rejects buffers larger than one native request', () {
+    final input = InputFlowController(
+      maxChunkSize: 2,
+      nativeTryWrite: (_, __) => PtyWriteResult.accepted,
+    );
+    expect(
+      () => input.tryWrite(Uint8List.fromList([1, 2, 3])),
+      throwsArgumentError,
+    );
+  });
+}
