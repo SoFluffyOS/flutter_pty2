@@ -1072,11 +1072,18 @@ FFI_PLUGIN_EXPORT int32_t pty_session_kill(PtySession *session,
                       "PTY session is closed");
         return 0;
     }
+    if (InterlockedCompareExchange(&session->process_exited, 0, 0) != 0) {
+        return 1;
+    }
     if (!TerminateJobObject(platform->job, 1)) {
+        const DWORD error_code = GetLastError();
+        if (WaitForSingleObject(platform->process, 0) == WAIT_OBJECT_0) {
+            return 1;
+        }
         pty_error_set(out_error,
                       PTY_ERROR_DOMAIN_WIN32,
                       PTY_ERROR_IO,
-                      GetLastError(),
+                      error_code,
                       "terminating PTY Job Object failed");
         return 0;
     }

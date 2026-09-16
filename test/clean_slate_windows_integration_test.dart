@@ -246,6 +246,28 @@ void main() {
   );
 
   test(
+    'keeps kill idempotent after the process exits',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['exit', '0'],
+        ),
+      );
+      final output = session.output.toList();
+      await session.processExit.timeout(const Duration(seconds: 5));
+      session.kill();
+      session.kill();
+      await session.done.timeout(const Duration(seconds: 5));
+      await output;
+      await session.close();
+    },
+    skip: skipReason,
+  );
+
+  test(
     'resizes a ConPTY while reporting unsupported pixel dimensions',
     () async {
       final child = fixture;
