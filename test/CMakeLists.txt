@@ -20,7 +20,7 @@ function(add_pty_native_test test_name source_file)
   set_tests_properties(${test_name} PROPERTIES TIMEOUT 300)
   if (test_name STREQUAL "pty_unix_session_stress_test")
     set_tests_properties(${test_name} PROPERTIES
-      ENVIRONMENT "PTY_NATIVE_STRESS_CYCLES=100"
+      ENVIRONMENT "PTY_NATIVE_STRESS_CYCLES=1000"
     )
   endif()
 endfunction()
