@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <dirent.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -83,6 +84,32 @@ static void reset_events(void)
     pthread_mutex_unlock(&events.mutex);
 }
 
+static int count_directory_entries(const char *path)
+{
+    DIR *directory = opendir(path);
+    assert(directory != NULL);
+    int count = 0;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+        count++;
+    }
+    assert(closedir(directory) == 0);
+    return count;
+}
+
+static int count_open_file_descriptors(void)
+{
+    return count_directory_entries("/dev/fd");
+}
+
+#if defined(__linux__)
+static int count_live_threads(void)
+{
+    return count_directory_entries("/proc/self/task");
+}
+#endif
+
 int main(void)
 {
     Dart_PostCObject_DL = post_object;
@@ -92,6 +119,10 @@ int main(void)
         cycle_count = (int)strtol(configured_cycle_count, NULL, 10);
     }
     assert(cycle_count > 0);
+    const int baseline_file_descriptors = count_open_file_descriptors();
+#if defined(__linux__)
+    const int baseline_threads = count_live_threads();
+#endif
     const char *arguments[] = {"-c", "exit 0"};
     const char *environment[] = {"PATH=/usr/bin:/bin"};
     const PtySpawnOptions options = {
@@ -126,5 +157,9 @@ int main(void)
     assert(stats.live_close_workers == 0);
     assert(stats.pending_write_chunks == 0);
     assert(stats.pending_write_bytes == 0);
+    assert(count_open_file_descriptors() == baseline_file_descriptors);
+#if defined(__linux__)
+    assert(count_live_threads() == baseline_threads);
+#endif
     return 0;
 }
