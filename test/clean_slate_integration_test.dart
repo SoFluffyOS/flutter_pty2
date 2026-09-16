@@ -330,4 +330,26 @@ void main() {
     },
     skip: skipReason,
   );
+
+  test(
+    'sends a POSIX signal to the foreground process group',
+    () async {
+      final session = await Pty.spawn(
+        const PtySpawnOptions(
+          executable: '/bin/sh',
+          arguments: ['-c', 'sleep 30'],
+        ),
+      );
+      session.sendSignal(PosixSignal.term);
+
+      final exit = await session.processExit.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw StateError('signaled process did not exit'),
+      );
+      expect(exit, isA<PtySignalExit>());
+      if (exit case PtySignalExit(:final signal)) expect(signal, 15);
+      await session.close();
+    },
+    skip: nativeSkipReason,
+  );
 }
