@@ -188,6 +188,58 @@ void main() {
   );
 
   test(
+    'completes writes while the child reads slowly',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      const transferSize = 1024 * 1024;
+      const chunkSize = 64 * 1024;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['slow-copy-input', '$transferSize', '1'],
+          inputBufferBytes: 64 * 1024,
+        ),
+      );
+      final outputDone = Completer<void>();
+      var received = 0;
+      var mismatched = false;
+      session.output.listen(
+        (chunk) {
+          for (var index = 0; index < chunk.length; index++) {
+            if (chunk[index] != (received + index) % 251) {
+              mismatched = true;
+              break;
+            }
+          }
+          received += chunk.length;
+        },
+        onDone: outputDone.complete,
+      );
+
+      for (var offset = 0; offset < transferSize;) {
+        final length = math.min(chunkSize, transferSize - offset);
+        final chunk = Uint8List(length);
+        for (var index = 0; index < length; index++) {
+          chunk[index] = (offset + index) % 251;
+        }
+        await session.input.write(chunk);
+        offset += length;
+      }
+
+      final exit = await session.done.timeout(const Duration(seconds: 30));
+      await outputDone.future;
+      await session.close();
+
+      expect(exit, isA<PtyExitCode>());
+      if (exit case PtyExitCode(:final code)) expect(code, 0);
+      expect(mismatched, isFalse);
+      expect(received, transferSize);
+    },
+    skip: skipReason,
+  );
+
+  test(
     'reports a typed error for a missing executable',
     () async {
       await expectLater(
