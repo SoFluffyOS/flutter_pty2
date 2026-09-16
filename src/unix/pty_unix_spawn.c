@@ -573,15 +573,38 @@ int pty_unix_spawn(const PtySpawnOptions *options,
         return 0;
     }
     struct termios attributes;
-    if (tcgetattr(slave, &attributes) == 0) {
-        // The clean-slate API transports terminal output as bytes.  Leave the
-        // PTY in raw mode so the kernel does not rewrite output (for example,
-        // turning each LF into CRLF through OPOST/ONLCR).
-        cfmakeraw(&attributes);
+    if (tcgetattr(slave, &attributes) != 0) {
+        const int error_number = errno;
+        close(master);
+        close(slave);
+        free_string_vector(argv, options->argument_count + 1);
+        free_string_vector(envp, options->environment_count);
+        free(resolved_executable);
+        pty_error_set_errno(error,
+                            PTY_ERROR_SPAWN_FAILED,
+                            error_number,
+                            "reading PTY terminal attributes failed");
+        return 0;
+    }
+    // The clean-slate API transports terminal output as bytes.  Leave the
+    // PTY in raw mode so the kernel does not rewrite output (for example,
+    // turning each LF into CRLF through OPOST/ONLCR).
+    cfmakeraw(&attributes);
 #ifdef IUTF8
-        attributes.c_iflag |= IUTF8;
+    attributes.c_iflag |= IUTF8;
 #endif
-        tcsetattr(slave, TCSANOW, &attributes);
+    if (tcsetattr(slave, TCSANOW, &attributes) != 0) {
+        const int error_number = errno;
+        close(master);
+        close(slave);
+        free_string_vector(argv, options->argument_count + 1);
+        free_string_vector(envp, options->environment_count);
+        free(resolved_executable);
+        pty_error_set_errno(error,
+                            PTY_ERROR_SPAWN_FAILED,
+                            error_number,
+                            "setting PTY raw terminal mode failed");
+        return 0;
     }
 
     master = move_fd_above(master, PTY_CHILD_STATUS_FD + 1);
