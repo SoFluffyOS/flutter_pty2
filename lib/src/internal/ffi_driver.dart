@@ -11,6 +11,7 @@ import 'package:flutter_pty2/src/internal/input_flow_controller.dart';
 import 'package:flutter_pty2/src/internal/native_event.dart';
 import 'package:flutter_pty2/src/internal/native_event_pump.dart';
 import 'package:flutter_pty2/src/internal/output_flow_controller.dart';
+import 'package:flutter_pty2/src/internal/pty_capabilities_codec.dart';
 import 'package:flutter_pty2/src/pty_capabilities.dart';
 import 'package:flutter_pty2/src/pty_environment.dart';
 import 'package:flutter_pty2/src/pty_exception.dart';
@@ -169,6 +170,7 @@ final class _FfiPtySessionState implements NativeEventHandler {
   late final OutputFlowController _output;
   late final InputFlowController _input;
   PtyExit? _processExit;
+  PtyCapabilities? _capabilities;
   bool _outputClosed = false;
   bool _outputDrained = false;
 
@@ -183,6 +185,14 @@ final class _FfiPtySessionState implements NativeEventHandler {
   Future<PtyExit> get done => _doneCompleter.future;
 
   Future<void> get closed => _closedCompleter.future;
+
+  PtyCapabilities get capabilities {
+    final capabilities = _capabilities;
+    if (capabilities == null) {
+      throw StateError('PTY capabilities are unavailable before spawn');
+    }
+    return capabilities;
+  }
 
   void _acknowledgeOutput(int bytes) {
     bindings.pty_session_ack_output(handle, bytes);
@@ -200,7 +210,8 @@ final class _FfiPtySessionState implements NativeEventHandler {
   @override
   void handleNativeEvent(NativeEvent event) {
     switch (event) {
-      case NativeSpawned():
+      case NativeSpawned(:final capabilities):
+        _capabilities ??= decodePtyCapabilities(capabilities);
         if (!_spawnCompleter.isCompleted) _spawnCompleter.complete();
       case NativeSpawnFailed(:final error):
         if (!_spawnCompleter.isCompleted) {
@@ -312,24 +323,7 @@ final class _FfiPtySession implements PtySession, Finalizable {
   }
 
   @override
-  PtyCapabilities get capabilities {
-    if (Platform.isWindows) {
-      return const PtyCapabilities(
-        posixSignals: false,
-        foregroundProcessGroups: false,
-        pixelDimensions: false,
-        reliableProcessTreeKill: true,
-        conPty: true,
-      );
-    }
-    return const PtyCapabilities(
-      posixSignals: true,
-      foregroundProcessGroups: true,
-      pixelDimensions: true,
-      reliableProcessTreeKill: false,
-      conPty: false,
-    );
-  }
+  PtyCapabilities get capabilities => _state.capabilities;
 
   @override
   Stream<Uint8List> get output {
