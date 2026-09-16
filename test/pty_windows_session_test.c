@@ -14,6 +14,7 @@ typedef struct SessionEvents {
     int output_closed;
     int process_exit;
     int session_closed;
+    int async_error;
     DWORD exit_code;
     size_t output_length;
 } SessionEvents;
@@ -59,6 +60,9 @@ static bool post_object(Dart_Port_DL port, Dart_CObject *message)
     case PTY_EVENT_SESSION_CLOSED:
         events.session_closed = 1;
         break;
+    case PTY_EVENT_ASYNC_ERROR:
+        events.async_error = 1;
+        break;
     default:
         break;
     }
@@ -81,6 +85,7 @@ static void reset_events(void)
     events.output_closed = 0;
     events.process_exit = 0;
     events.session_closed = 0;
+    events.async_error = 0;
     events.exit_code = 0;
     events.output_length = 0;
     LeaveCriticalSection(&events.mutex);
@@ -137,6 +142,7 @@ int main(void)
     assert(events.exit_code == 0);
     assert(events.output_length >= strlen("native-session"));
     assert(events.output_closed == 1);
+    assert(events.async_error == 0);
     PtyError signal_error;
     assert(pty_session_send_signal(session, 15, 0, &signal_error) == 0);
     assert(signal_error.kind == PTY_ERROR_UNSUPPORTED);

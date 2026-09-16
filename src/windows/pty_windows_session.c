@@ -307,19 +307,25 @@ static DWORD WINAPI windows_reader(void *argument)
         if (stopping) break;
 
         DWORD length = 0;
-        if (!ReadFile(platform->output_read,
-                      buffer,
-                      capacity,
-                      &length,
-                      NULL) ||
-            length == 0) {
+        const BOOL read_succeeded = ReadFile(platform->output_read,
+                                             buffer,
+                                             capacity,
+                                             &length,
+                                             NULL);
+        if (!read_succeeded || length == 0) {
+            const DWORD read_error = GetLastError();
             EnterCriticalSection(&platform->mutex);
             const int closing = platform->stopping;
             LeaveCriticalSection(&platform->mutex);
-            if (!closing) {
+            const int process_exited =
+                InterlockedCompareExchange(&session->process_exited,
+                                           0,
+                                           0) != 0 ||
+                WaitForSingleObject(platform->process, 0) == WAIT_OBJECT_0;
+            if (!closing && !process_exited) {
                 windows_post_error(session,
                                    PTY_ERROR_IO,
-                                   GetLastError(),
+                                   read_error,
                                    "reading ConPTY output failed");
             }
             break;

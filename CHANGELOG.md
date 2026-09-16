@@ -11,6 +11,7 @@
 * Verify clean-slate Android output and input integration on an API 35 emulator.
 * Add scheduled macOS AddressSanitizer and UndefinedBehaviorSanitizer coverage.
 * Make Windows discard output natively after the Dart consumer cancels.
+* Avoid reporting normal Windows ConPTY EOF as an asynchronous I/O error.
 * Add native lifecycle, transfer, exit-drain, randomized race, finalizer, and
   platform resource-leak coverage, including scheduled 1 GiB transfers and
   10,000 randomized operations.
