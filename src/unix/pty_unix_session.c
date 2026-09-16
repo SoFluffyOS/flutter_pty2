@@ -51,6 +51,19 @@ static PtyUnixPlatform *platform_for(PtySession *session)
     return session == NULL ? NULL : (PtyUnixPlatform *)session->platform;
 }
 
+static int create_detached_worker(pthread_t *thread,
+                                  void *(*worker)(void *),
+                                  void *argument)
+{
+    pthread_attr_t attributes;
+    int result = pthread_attr_init(&attributes);
+    if (result != 0) return result;
+    result = pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED);
+    if (result == 0) result = pthread_create(thread, &attributes, worker, argument);
+    pthread_attr_destroy(&attributes);
+    return result;
+}
+
 static void wake_reactor(PtyUnixPlatform *platform)
 {
     const uint8_t marker = 1;
@@ -473,10 +486,9 @@ static void *bootstrap_worker(void *argument)
 
     pty_debug_worker_started(PTY_DEBUG_WORKER_READ);
     pty_session_retain(session);
-    const int reactor_result = pthread_create(&platform->reactor_thread,
-                                              NULL,
-                                              reactor_worker,
-                                              session);
+    const int reactor_result = create_detached_worker(&platform->reactor_thread,
+                                                      reactor_worker,
+                                                      session);
     if (reactor_result != 0) {
         pty_debug_worker_finished(PTY_DEBUG_WORKER_READ);
         pty_session_release(session);
@@ -496,10 +508,9 @@ static void *bootstrap_worker(void *argument)
     platform->reactor_started = 1;
     pty_debug_worker_started(PTY_DEBUG_WORKER_WAIT);
     pty_session_retain(session);
-    const int waiter_result = pthread_create(&platform->waiter_thread,
-                                             NULL,
-                                             waiter_worker,
-                                             session);
+    const int waiter_result = create_detached_worker(&platform->waiter_thread,
+                                                     waiter_worker,
+                                                     session);
     if (waiter_result != 0) {
         pty_debug_worker_finished(PTY_DEBUG_WORKER_WAIT);
         pty_session_release(session);
