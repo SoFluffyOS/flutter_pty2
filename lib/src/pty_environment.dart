@@ -72,7 +72,11 @@ Map<String, String> buildEnvironment(
       }
   }
 
-  return result;
+  if (!caseInsensitive) return result;
+
+  final entries = result.entries.toList(growable: false)
+    ..sort((first, second) => first.key.compareTo(second.key));
+  return Map<String, String>.fromEntries(entries);
 }
 
 void _validateEntries(Iterable<MapEntry<String, String>> entries) {

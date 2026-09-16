@@ -48,6 +48,21 @@ void main() {
       );
     });
 
+    test('orders Windows environment entries for native conversion', () {
+      const environment = PtyEnvironment.replace({
+        'z': 'last',
+        'Beta': 'middle',
+        'alpha': 'first',
+      });
+
+      final result = buildEnvironment(
+        environment,
+        caseInsensitive: true,
+      );
+
+      expect(result.keys, ['ALPHA', 'BETA', 'Z']);
+    });
+
     test('rejects malformed keys and values before native conversion', () {
       expect(
         () => const PtyEnvironment.replace({'BAD=KEY': 'value'}).validate(),
