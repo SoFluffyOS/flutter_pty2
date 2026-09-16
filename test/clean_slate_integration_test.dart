@@ -781,7 +781,10 @@ void main() {
       expect(exit, isA<PtySignalExit>());
       if (exit case PtySignalExit(:final signal)) expect(signal, 9);
 
-      await Future.wait([session.close(), session.close()]);
+      final firstClose = session.close();
+      final secondClose = session.close();
+      expect(identical(firstClose, secondClose), isTrue);
+      await Future.wait([firstClose, secondClose]);
     },
     skip: nativeSkipReason,
   );

@@ -315,6 +315,7 @@ final class _FfiPtySession implements PtySession, Finalizable {
   late final NativeEventPump _eventPump;
   bool _closing = false;
   bool _finalizerDetached = false;
+  Future<void>? _closeFuture;
 
   @override
   int get pid {
@@ -419,8 +420,15 @@ final class _FfiPtySession implements PtySession, Finalizable {
   }
 
   @override
-  Future<void> close() async {
-    if (_closing) return _state.closed;
+  Future<void> close() {
+    final existing = _closeFuture;
+    if (existing != null) return existing;
+    final closeFuture = _close();
+    _closeFuture = closeFuture;
+    return closeFuture;
+  }
+
+  Future<void> _close() async {
     _closing = true;
     _state.input.closeWithError(const PtyClosedException());
     bindings.pty_session_begin_close(handle);
