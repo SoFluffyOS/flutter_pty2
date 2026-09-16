@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -76,6 +77,42 @@ void main() {
       if (processExit case PtyExitCode(:final code)) expect(code, 0);
       final bytes = chunks.expand((chunk) => chunk).toList();
       expect(bytes, List<int>.generate(1000000, (index) => index % 251));
+    },
+    skip: skipReason,
+  );
+
+  test(
+    'preserves empty, quoted, spaced, and Unicode arguments',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      const arguments = [
+        'empty',
+        '',
+        'hello world',
+        'quote"backslash\\',
+        r'C:\Program Files\Test\',
+        '你好🙂',
+      ];
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: ['print-argv', ...arguments],
+        ),
+      );
+      final output = await session.output.toList();
+      final exit = await session.done;
+      await session.close();
+
+      expect(exit, isA<PtyExitCode>());
+      if (exit case PtyExitCode(:final code)) expect(code, 0);
+      expect(
+        output.expand((chunk) => chunk).toList(),
+        utf8.encode([
+          for (var index = 0; index < arguments.length; index++)
+            '$index:${arguments[index]}\n',
+        ].join()),
+      );
     },
     skip: skipReason,
   );
