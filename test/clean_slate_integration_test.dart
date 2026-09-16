@@ -504,6 +504,42 @@ void main() {
   );
 
   test(
+    'resizes repeatedly while output is active',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      const transferSize = 1000000;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['flood-output', '$transferSize'],
+        ),
+      );
+      final outputFuture = session.output.toList();
+      const sizes = [
+        PtySize(columns: 80, rows: 24),
+        PtySize(columns: 120, rows: 40),
+        PtySize(columns: 200, rows: 60),
+        PtySize(columns: 50, rows: 10),
+      ];
+      for (var index = 0; index < 20; index++) {
+        session.resize(sizes[index % sizes.length]);
+      }
+      final exit = await session.done.timeout(const Duration(seconds: 10));
+      final output = await outputFuture;
+      await session.close();
+
+      expect(exit, isA<PtyExitCode>());
+      if (exit case PtyExitCode(:final code)) expect(code, 0);
+      expect(
+        output.expand((chunk) => chunk).toList(),
+        List<int>.generate(transferSize, (index) => index % 251),
+      );
+    },
+    skip: skipReason,
+  );
+
+  test(
     'delivers resized dimensions to the child PTY',
     () async {
       final child = fixture;
