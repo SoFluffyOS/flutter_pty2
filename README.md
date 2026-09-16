@@ -128,6 +128,18 @@ PTY_TEST_CHILD=/tmp/flutter_pty2-fixture/pty_test_child \
 flutter test test/clean_slate_integration_test.dart
 ```
 
+The Android clean-slate integration subset runs from the generated example app
+so Flutter installs the FFI plugin into an emulator process:
+
+```sh
+cd example
+flutter pub get
+flutter test -d emulator-5554 \
+  integration_test/clean_slate_android_integration_test.dart
+```
+
+The same example-app command is used by the scheduled Android emulator job.
+
 Use `libflutter_pty2.so` on Linux and `flutter_pty2.dll` on Windows. The
 native CTest suite is available in the native build directory:
 

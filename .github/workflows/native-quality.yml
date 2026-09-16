@@ -107,6 +107,10 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Install example dependencies
+        working-directory: example
+        run: flutter pub get
+
       - name: Run Android emulator integration subset
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -114,7 +118,7 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          script: flutter test --device-id emulator-5554 test/clean_slate_android_integration_test.dart
+          script: flutter test -d emulator-5554 integration_test/clean_slate_android_integration_test.dart
 
   sanitizer:
     runs-on: ubuntu-latest
