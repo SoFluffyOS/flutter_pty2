@@ -139,8 +139,9 @@ static void maybe_post_session_closed(PtySession *session)
         should_post = 1;
     }
     pthread_mutex_unlock(&platform->mutex);
-    if (should_post) pty_post_simple_event(session->event_port,
-                                            PTY_EVENT_SESSION_CLOSED);
+    if (!should_post) return;
+    pty_session_mark_closed(session);
+    pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
 }
 
 static void mark_output_closed(PtySession *session)

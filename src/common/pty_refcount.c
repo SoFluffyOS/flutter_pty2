@@ -80,3 +80,15 @@ void pty_session_mark_closing(PtySession *session)
                           memory_order_release);
 #endif
 }
+
+void pty_session_mark_closed(PtySession *session)
+{
+    if (session == NULL) return;
+#if defined(_WIN32)
+    InterlockedExchange(&session->lifecycle, PTY_LIFECYCLE_CLOSED);
+#else
+    atomic_store_explicit(&session->lifecycle,
+                          PTY_LIFECYCLE_CLOSED,
+                          memory_order_release);
+#endif
+}

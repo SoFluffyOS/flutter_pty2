@@ -247,9 +247,9 @@ static void windows_maybe_post_closed(PtySession *session)
         should_post = 1;
     }
     LeaveCriticalSection(&platform->mutex);
-    if (should_post) {
-        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
-    }
+    if (!should_post) return;
+    pty_session_mark_closed(session);
+    pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
 }
 
 static DWORD WINAPI windows_reader(void *argument)
