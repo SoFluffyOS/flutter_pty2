@@ -8,6 +8,14 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
   final fixture = Platform.environment['PTY_TEST_CHILD'];
+  final operationLimit = _configuredPositiveInt(
+    'PTY_RANDOM_STRESS_OPERATIONS',
+    fallback: 1024,
+  );
+  final maxActionsPerSession = _configuredPositiveInt(
+    'PTY_RANDOM_STRESS_MAX_ACTIONS',
+    fallback: 32,
+  );
   final configured = (Platform.isLinux || Platform.isMacOS) &&
       library?.isNotEmpty == true &&
       fixture?.isNotEmpty == true;
@@ -25,7 +33,9 @@ void main() {
 
       const seed = 38172931;
       final random = math.Random(seed);
-      for (var cycle = 0; cycle < 32; cycle++) {
+      var operationCount = 0;
+      var cycle = 0;
+      while (operationCount < operationLimit) {
         final session = await Pty.spawn(
           PtySpawnOptions(
             executable: child,
@@ -38,14 +48,17 @@ void main() {
         var closed = false;
         var paused = false;
         try {
-          for (var action = 0; action < 32; action++) {
+          for (var action = 0;
+              action < maxActionsPerSession && operationCount < operationLimit;
+              action++) {
+            operationCount++;
             try {
               switch (random.nextInt(6)) {
                 case 0:
                   session.input.tryWrite(
                     Uint8List.fromList([
-                      cycle,
-                      action,
+                      cycle % 256,
+                      action % 256,
                       random.nextInt(256),
                     ]),
                   );
@@ -84,16 +97,33 @@ void main() {
           expect(exit, isA<PtyExit>());
         } catch (error, stackTrace) {
           throw StateError(
-            'PTY random stress failed: seed=$seed cycle=$cycle '
+            'PTY random stress failed: seed=$seed operation=$operationCount '
+            'cycle=$cycle '
             'error=$error\n$stackTrace',
           );
         } finally {
           if (closed == false) await session.close();
           await subscription.cancel();
         }
+        cycle++;
       }
     },
     skip: skipReason,
     timeout: const Timeout(Duration(minutes: 10)),
   );
+}
+
+int _configuredPositiveInt(String name, {required int fallback}) {
+  final rawValue = Platform.environment[name];
+  if (rawValue == null || rawValue.isEmpty) return fallback;
+
+  final value = int.tryParse(rawValue);
+  if (value == null || value < 1) {
+    throw ArgumentError.value(
+      rawValue,
+      name,
+      'must be a positive integer',
+    );
+  }
+  return value;
 }
