@@ -96,4 +96,35 @@ void main() {
     },
     skip: skipReason,
   );
+
+  test(
+    'keeps trailing output available after process exit until done',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['exit-after-output', '37', 'fixture-sentinel'],
+        ),
+      );
+      final outputFuture = session.output.toList();
+
+      final processExit = await session.processExit;
+      expect(processExit, isA<PtyExitCode>());
+      if (processExit case PtyExitCode(:final code)) expect(code, 37);
+
+      final done = await session.done;
+      expect(done, isA<PtyExitCode>());
+      if (done case PtyExitCode(:final code)) expect(code, 37);
+      final output = await outputFuture;
+      await session.close();
+
+      expect(
+        output.expand((chunk) => chunk).toList(),
+        'fixture-sentinel'.codeUnits,
+      );
+    },
+    skip: skipReason,
+  );
 }
