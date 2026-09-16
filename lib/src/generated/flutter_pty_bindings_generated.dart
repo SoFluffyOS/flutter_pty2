@@ -386,6 +386,7 @@ final class PtyError extends ffi.Struct {
   external ffi.Array<ffi.Char> message;
 }
 
+/// Test/debug diagnostics; not part of the public Dart API.
 final class PtyDebugStats extends ffi.Struct {
   @ffi.Uint64()
   external int live_sessions;
