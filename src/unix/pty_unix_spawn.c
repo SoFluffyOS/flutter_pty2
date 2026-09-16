@@ -405,20 +405,21 @@ static void child_report_error(int fd, PtyChildStage stage, int error_number)
     }
 }
 
-static void pty_unix_reset_child_signals(void)
+static void pty_unix_reset_child_signals(
+    const struct sigaction *default_signal_action)
 {
-    signal(SIGABRT, SIG_DFL);
-    signal(SIGALRM, SIG_DFL);
-    signal(SIGCHLD, SIG_DFL);
-    signal(SIGFPE, SIG_DFL);
-    signal(SIGHUP, SIG_DFL);
-    signal(SIGILL, SIG_DFL);
-    signal(SIGINT, SIG_DFL);
-    signal(SIGPIPE, SIG_DFL);
-    signal(SIGQUIT, SIG_DFL);
-    signal(SIGSEGV, SIG_DFL);
-    signal(SIGTERM, SIG_DFL);
-    signal(SIGTRAP, SIG_DFL);
+    sigaction(SIGABRT, default_signal_action, NULL);
+    sigaction(SIGALRM, default_signal_action, NULL);
+    sigaction(SIGCHLD, default_signal_action, NULL);
+    sigaction(SIGFPE, default_signal_action, NULL);
+    sigaction(SIGHUP, default_signal_action, NULL);
+    sigaction(SIGILL, default_signal_action, NULL);
+    sigaction(SIGINT, default_signal_action, NULL);
+    sigaction(SIGPIPE, default_signal_action, NULL);
+    sigaction(SIGQUIT, default_signal_action, NULL);
+    sigaction(SIGSEGV, default_signal_action, NULL);
+    sigaction(SIGTERM, default_signal_action, NULL);
+    sigaction(SIGTRAP, default_signal_action, NULL);
 }
 
 static void close_extra_fds(int status_fd, int maximum_fd)
@@ -616,6 +617,10 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     close(status_pipe[1]);
 
     const int maximum_fd = max_open_fd();
+    struct sigaction default_signal_action = {
+        .sa_handler = SIG_DFL,
+    };
+    sigemptyset(&default_signal_action.sa_mask);
     const pid_t child = fork();
     if (child < 0) {
         const int error_number = errno;
@@ -631,7 +636,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
         return 0;
     }
     if (child == 0) {
-        pty_unix_reset_child_signals();
+        pty_unix_reset_child_signals(&default_signal_action);
         close(master);
         close(status_pipe[0]);
         if (setsid() < 0) {
