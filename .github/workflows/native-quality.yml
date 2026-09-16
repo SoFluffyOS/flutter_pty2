@@ -48,6 +48,7 @@ jobs:
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
+          PTY_RANDOM_STRESS_OPERATIONS: 10000
         run: flutter test test/clean_slate_random_stress_test.dart
 
       - name: Run exit-drain stress
