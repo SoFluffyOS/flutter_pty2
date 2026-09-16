@@ -1,0 +1,23 @@
+name: FlutterPtyBindings
+
+description: |
+  Bindings for the clean-slate flutter_pty2 ABI.
+
+output: "lib/src/generated/flutter_pty_bindings_generated.dart"
+
+headers:
+  entry-points:
+    - "src/flutter_pty.h"
+    - "src/pty_dart_api.h"
+
+preamble: |
+  // ignore_for_file: always_specify_types
+  // ignore_for_file: camel_case_types
+  // ignore_for_file: constant_identifier_names
+  // ignore_for_file: non_constant_identifier_names
+  // ignore_for_file: unused_element
+  // ignore_for_file: unused_field
+
+comments:
+  style: any
+  length: full

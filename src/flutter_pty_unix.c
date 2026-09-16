@@ -15,7 +15,7 @@
 #include <sys/wait.h>
 
 #include "forkpty.h"
-#include "flutter_pty.h"
+#include "flutter_pty_legacy.h"
 
 #include "include/dart_api.h"
 #include "include/dart_api_dl.h"

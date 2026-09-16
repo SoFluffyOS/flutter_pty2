@@ -8,6 +8,9 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_pty2/src/flutter_pty_bindings_generated.dart';
 import 'package:flutter_pty2/src/environment.dart';
 import 'package:flutter_pty2/src/options_validation.dart';
+import 'package:flutter_pty2/src/internal/internal.dart';
+import 'package:flutter_pty2/src/pty_session.dart';
+import 'package:flutter_pty2/src/pty_spawn_options.dart';
 
 const _libName = 'flutter_pty2';
 
@@ -40,6 +43,10 @@ void _ensureInitialized() {
 ///
 /// To create a Pty, use [Pty.start].
 class Pty {
+  static Future<PtySession> spawn(PtySpawnOptions options) {
+    return FfiPtyDriver.instance.spawn(options);
+  }
+
   final String executable;
 
   final List<String> arguments;

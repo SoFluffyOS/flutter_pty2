@@ -10,9 +10,9 @@ output: "lib/src/flutter_pty_bindings_generated.dart"
 
 headers:
   entry-points:
-    - "src/flutter_pty.h"
+    - "src/flutter_pty_legacy.h"
   include-directives:
-    - "src/flutter_pty.h"
+    - "src/flutter_pty_legacy.h"
     - "src/include/dart_api_dl.h"
 
 functions:

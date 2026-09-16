@@ -7,7 +7,15 @@ project(flutter_pty2_library VERSION 1.0.0 LANGUAGES C)
 
 add_library(flutter_pty2 SHARED
   "flutter_pty.c"
+  "common/pty_error.c"
+  "common/pty_event.c"
+  "common/pty_refcount.c"
+  "common/pty_write_queue.c"
 )
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_libraries(flutter_pty2 PRIVATE util)
+endif()
 
 set_target_properties(flutter_pty2 PROPERTIES
   PUBLIC_HEADER flutter_pty.h

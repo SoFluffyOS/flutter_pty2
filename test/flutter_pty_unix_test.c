@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 
-#include "flutter_pty.h"
+#include "flutter_pty_legacy.h"
 
 static pthread_mutex_t event_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t event_condition = PTHREAD_COND_INITIALIZER;

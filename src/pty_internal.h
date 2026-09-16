@@ -1,0 +1,88 @@
+#ifndef FLUTTER_PTY_INTERNAL_H_
+#define FLUTTER_PTY_INTERNAL_H_
+
+#include <stdint.h>
+
+#include "flutter_pty.h"
+#include "include/dart_api_dl.h"
+
+#if defined(_WIN32)
+#include <windows.h>
+typedef CRITICAL_SECTION PtyMutex;
+#define PTY_MUTEX_INITIALIZER {0}
+#else
+#include <pthread.h>
+#include <stdatomic.h>
+typedef pthread_mutex_t PtyMutex;
+#define PTY_MUTEX_INITIALIZER PTHREAD_MUTEX_INITIALIZER
+#endif
+
+typedef enum PtyLifecycle {
+    PTY_LIFECYCLE_STARTING = 0,
+    PTY_LIFECYCLE_RUNNING = 1,
+    PTY_LIFECYCLE_CLOSING = 2,
+    PTY_LIFECYCLE_CLOSED = 3
+} PtyLifecycle;
+
+typedef void (*PtySessionFreeFunction)(PtySession *session);
+
+struct PtySession {
+#if defined(_WIN32)
+    volatile LONG ref_count;
+    volatile LONG lifecycle;
+    volatile LONG process_exited;
+    volatile LONG output_closed;
+    volatile LONG input_closed;
+    volatile LONG abandoned;
+#else
+    _Atomic uint32_t ref_count;
+    _Atomic int lifecycle;
+    _Atomic int process_exited;
+    _Atomic int output_closed;
+    _Atomic int input_closed;
+    _Atomic int abandoned;
+#endif
+
+    Dart_Port_DL event_port;
+    uint64_t input_buffer_limit;
+    uint64_t output_window_limit;
+    uint64_t output_credit;
+    void *platform;
+    PtySessionFreeFunction free_function;
+};
+
+void pty_session_init(PtySession *session);
+void pty_session_retain(PtySession *session);
+void pty_session_release(PtySession *session);
+void pty_session_mark_abandoned(PtySession *session);
+void pty_session_mark_closing(PtySession *session);
+
+typedef struct PtyWriteChunk {
+    struct PtyWriteChunk *next;
+    uint8_t *bytes;
+    uint64_t length;
+    uint64_t offset;
+    uint64_t request_id;
+} PtyWriteChunk;
+
+typedef struct PtyWriteQueue {
+    PtyMutex mutex;
+    PtyWriteChunk *head;
+    PtyWriteChunk *tail;
+    uint64_t limit;
+    uint64_t pending_bytes;
+    int initialized;
+} PtyWriteQueue;
+
+void pty_write_queue_init(PtyWriteQueue *queue, uint64_t limit);
+void pty_write_queue_dispose(PtyWriteQueue *queue);
+int pty_write_queue_try_enqueue(PtyWriteQueue *queue,
+                                 const uint8_t *bytes,
+                                 uint64_t length,
+                                 uint64_t request_id);
+PtyWriteChunk *pty_write_queue_dequeue(PtyWriteQueue *queue);
+int pty_write_queue_requeue_front(PtyWriteQueue *queue, PtyWriteChunk *chunk);
+void pty_write_chunk_free(PtyWriteChunk *chunk);
+uint64_t pty_write_queue_pending_bytes(PtyWriteQueue *queue);
+
+#endif

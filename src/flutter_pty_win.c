@@ -25,7 +25,7 @@ HRESULT WINAPI ResizePseudoConsole(HPCON pseudo_console, COORD size);
 void WINAPI ClosePseudoConsole(HPCON pseudo_console);
 #endif
 
-#include "flutter_pty.h"
+#include "flutter_pty_legacy.h"
 
 #include "include/dart_api.h"
 #include "include/dart_api_dl.h"

@@ -1,0 +1,462 @@
+import 'dart:async';
+import 'dart:ffi';
+import 'dart:io';
+import 'dart:isolate';
+import 'dart:math' as math;
+import 'dart:typed_data';
+
+import 'package:ffi/ffi.dart';
+import 'package:flutter_pty2/src/generated/flutter_pty_bindings_generated.dart'
+    as native;
+import 'package:flutter_pty2/src/internal/native_event.dart';
+import 'package:flutter_pty2/src/internal/native_event_pump.dart';
+import 'package:flutter_pty2/src/internal/output_flow_controller.dart';
+import 'package:flutter_pty2/src/pty_capabilities.dart';
+import 'package:flutter_pty2/src/pty_environment.dart';
+import 'package:flutter_pty2/src/pty_exception.dart';
+import 'package:flutter_pty2/src/pty_exit.dart';
+import 'package:flutter_pty2/src/pty_input.dart';
+import 'package:flutter_pty2/src/pty_session.dart';
+import 'package:flutter_pty2/src/pty_size.dart';
+import 'package:flutter_pty2/src/pty_spawn_options.dart';
+
+final class FfiPtyDriver {
+  FfiPtyDriver._();
+
+  static final instance = FfiPtyDriver._();
+  static final DynamicLibrary _library = _openLibrary();
+  static final native.FlutterPtyBindings _bindings =
+      native.FlutterPtyBindings(_library);
+  static bool _initialized = false;
+
+  Future<PtySession> spawn(PtySpawnOptions options) async {
+    if (Platform.isWindows) {
+      throw const PtyUnsupportedException(
+        'The clean-slate PTY backend is not available on Windows yet',
+      );
+    }
+    options.validate();
+    _ensureInitialized();
+
+    final environment = buildEnvironment(
+      options.environment,
+      caseInsensitive: Platform.isWindows,
+    );
+    final port = ReceivePort();
+    final nativeSession = using((arena) {
+      final nativeOptions = arena.allocate<native.PtySpawnOptions>(
+        sizeOf<native.PtySpawnOptions>(),
+      );
+      final executable = options.executable.toNativeUtf8(allocator: arena);
+      final arguments = arena<Pointer<Char>>(options.arguments.length + 1);
+      for (var index = 0; index < options.arguments.length; index++) {
+        (arguments + index).value =
+            options.arguments[index].toNativeUtf8(allocator: arena).cast();
+      }
+      (arguments + options.arguments.length).value = nullptr;
+
+      final environmentValues = environment.entries
+          .map((entry) => '${entry.key}=${entry.value}')
+          .toList(growable: false);
+      final environmentPointers =
+          arena<Pointer<Char>>(environmentValues.length + 1);
+      for (var index = 0; index < environmentValues.length; index++) {
+        (environmentPointers + index).value =
+            environmentValues[index].toNativeUtf8(allocator: arena).cast();
+      }
+      (environmentPointers + environmentValues.length).value = nullptr;
+
+      nativeOptions.ref
+        ..executable = executable.cast()
+        ..arguments = arguments
+        ..argument_count = options.arguments.length
+        ..environment = environmentPointers
+        ..environment_count = environmentValues.length
+        ..working_directory = switch (options.workingDirectory) {
+          final directory? => directory.toNativeUtf8(allocator: arena).cast(),
+          null => nullptr,
+        }
+        ..input_buffer_bytes = options.inputBufferBytes
+        ..output_window_bytes = options.outputWindowBytes
+        ..event_port = port.sendPort.nativePort;
+      nativeOptions.ref.size
+        ..rows = options.size.rows
+        ..columns = options.size.columns
+        ..pixel_width = options.size.pixelWidth
+        ..pixel_height = options.size.pixelHeight;
+
+      final outSession = arena<Pointer<native.PtySession>>();
+      final outError = arena<native.PtyError>();
+      final result = _bindings.pty_session_start(
+        nativeOptions,
+        outSession,
+        outError,
+      );
+      if (result == 0 || outSession.value == nullptr) {
+        throw PtySpawnException(
+          'Starting PTY session failed',
+          nativeError: _readNativeError(outError.ref),
+        );
+      }
+      return outSession.value;
+    });
+
+    final session = _FfiPtySession(
+      handle: nativeSession,
+      bindings: _bindings,
+      port: port,
+      finalizer: NativeFinalizer(
+        _library.lookup<NativeFunction<Void Function(Pointer<Void>)>>(
+          'pty_session_abandon',
+        ),
+      ),
+    );
+    session.attach();
+    try {
+      return await session.waitForSpawn();
+    } catch (_) {
+      unawaited(session.close());
+      rethrow;
+    }
+  }
+
+  void _ensureInitialized() {
+    if (_initialized) return;
+    final result = _bindings.Dart_InitializeApiDL(
+      NativeApi.initializeApiDLData.cast(),
+    );
+    if (result != 0) {
+      throw StateError('Failed to initialize native PTY bindings');
+    }
+    _initialized = true;
+  }
+}
+
+DynamicLibrary _openLibrary() {
+  if (Platform.isMacOS || Platform.isIOS) return DynamicLibrary.process();
+  if (Platform.isLinux || Platform.isAndroid) {
+    return DynamicLibrary.open('libflutter_pty2.so');
+  }
+  if (Platform.isWindows) return DynamicLibrary.open('flutter_pty2.dll');
+  throw UnsupportedError('Unknown platform: ${Platform.operatingSystem}');
+}
+
+final class _FfiPtySession
+    implements PtySession, NativeEventHandler, Finalizable {
+  _FfiPtySession({
+    required this.handle,
+    required this.bindings,
+    required this.port,
+    required NativeFinalizer finalizer,
+  }) : _finalizer = finalizer {
+    _output = OutputFlowController(
+      acknowledge: (bytes) => bindings.pty_session_ack_output(handle, bytes),
+      discardOutput: () => bindings.pty_session_discard_output(handle),
+    );
+    _input = _FfiPtyInput(this);
+  }
+
+  final Pointer<native.PtySession> handle;
+  final native.FlutterPtyBindings bindings;
+  final ReceivePort port;
+  final NativeFinalizer _finalizer;
+  final _finalizerDetachToken = Object();
+  final _spawnCompleter = Completer<PtySession>();
+  final _processExitCompleter = Completer<PtyExit>();
+  final _doneCompleter = Completer<PtyExit>();
+  final _closedCompleter = Completer<void>();
+  late final OutputFlowController _output;
+  late final _FfiPtyInput _input;
+  late final NativeEventPump _eventPump;
+  PtyExit? _processExit;
+  bool _outputClosed = false;
+  bool _closing = false;
+  bool _finalizerDetached = false;
+
+  @override
+  int get pid => bindings.pty_session_pid(handle).toInt();
+
+  @override
+  PtyCapabilities get capabilities => const PtyCapabilities(
+        posixSignals: true,
+        foregroundProcessGroups: true,
+        pixelDimensions: true,
+        reliableProcessTreeKill: false,
+        conPty: false,
+      );
+
+  @override
+  Stream<Uint8List> get output => _output.stream;
+
+  @override
+  PtyInput get input => _input;
+
+  @override
+  Future<PtyExit> get processExit => _processExitCompleter.future;
+
+  @override
+  Future<PtyExit> get done => _doneCompleter.future;
+
+  void attach() {
+    _eventPump = NativeEventPump(port)..attach(this);
+    _finalizer.attach(
+      this,
+      handle.cast(),
+      detach: _finalizerDetachToken,
+    );
+  }
+
+  Future<PtySession> waitForSpawn() => _spawnCompleter.future;
+
+  @override
+  void handleNativeEvent(NativeEvent event) {
+    switch (event) {
+      case NativeSpawned():
+        if (!_spawnCompleter.isCompleted) _spawnCompleter.complete(this);
+      case NativeSpawnFailed(:final error):
+        if (!_spawnCompleter.isCompleted) {
+          _spawnCompleter.completeError(
+            PtySpawnException('PTY process failed to spawn',
+                nativeError: error),
+          );
+        }
+      case NativeOutput(:final bytes):
+        _output.addNativeOutput(bytes);
+      case NativeOutputClosed():
+        if (_outputClosed) return;
+        _outputClosed = true;
+        _output.handleNativeClosed();
+        _maybeCompleteDone();
+      case NativeWriteComplete(:final requestId):
+        _input.handleWriteComplete(requestId);
+      case NativeWritable():
+        _input.handleWritable();
+      case NativeInputClosed(:final error):
+        _input.handleClosed(
+            PtyIoException('PTY input closed', nativeError: error));
+      case NativeProcessExit(:final exit):
+        if (_processExit != null) return;
+        _processExit = exit;
+        _processExitCompleter.complete(exit);
+        _maybeCompleteDone();
+      case NativeAsyncError(:final error):
+        _input
+            .handleClosed(PtyIoException('PTY I/O failed', nativeError: error));
+      case NativeSessionClosed():
+        if (!_closedCompleter.isCompleted) _closedCompleter.complete();
+    }
+  }
+
+  @override
+  void handleProtocolError(String message) {
+    final error = StateError(message);
+    if (!_spawnCompleter.isCompleted) _spawnCompleter.completeError(error);
+    if (!_processExitCompleter.isCompleted) {
+      _processExitCompleter.completeError(error);
+    }
+    if (!_doneCompleter.isCompleted) _doneCompleter.completeError(error);
+  }
+
+  void _maybeCompleteDone() {
+    final exit = _processExit;
+    if (exit == null || !_outputClosed || _doneCompleter.isCompleted) return;
+    _doneCompleter.complete(exit);
+  }
+
+  @override
+  void resize(PtySize size) {
+    size.validate();
+    using((arena) {
+      final nativeSize = arena<native.PtySize>();
+      nativeSize.ref
+        ..rows = size.rows
+        ..columns = size.columns
+        ..pixel_width = size.pixelWidth
+        ..pixel_height = size.pixelHeight;
+      final error = arena<native.PtyError>();
+      final result = bindings.pty_session_resize(handle, nativeSize.ref, error);
+      if (result == 0) {
+        throw PtyIoException('Resizing PTY failed',
+            nativeError: _readNativeError(error.ref));
+      }
+    });
+  }
+
+  @override
+  void kill() {
+    using((arena) {
+      final error = arena<native.PtyError>();
+      final result = bindings.pty_session_kill(handle, error);
+      if (result == 0) {
+        throw PtyIoException('Killing PTY failed',
+            nativeError: _readNativeError(error.ref));
+      }
+    });
+  }
+
+  @override
+  void sendSignal(PosixSignal signal,
+      {PosixSignalTarget target = PosixSignalTarget.foregroundProcessGroup}) {
+    using((arena) {
+      final error = arena<native.PtyError>();
+      final result = bindings.pty_session_send_signal(
+        handle,
+        signal.number,
+        target.index,
+        error,
+      );
+      if (result == 0) {
+        throw PtyIoException('Sending POSIX signal failed',
+            nativeError: _readNativeError(error.ref));
+      }
+    });
+  }
+
+  @override
+  Future<void> close() async {
+    if (_closing) return _closedCompleter.future;
+    _closing = true;
+    bindings.pty_session_begin_close(handle);
+    await _closedCompleter.future;
+    if (!_finalizerDetached) {
+      _finalizer.detach(_finalizerDetachToken);
+      _finalizerDetached = true;
+      bindings.pty_session_release(handle);
+    }
+    await _eventPump.close();
+  }
+
+  void tryWrite(Uint8List data, int requestId, Completer<void>? completion) {
+    using((arena) {
+      final nativeBytes = arena<Uint8>(data.length);
+      nativeBytes.asTypedList(data.length).setAll(0, data);
+      final error = arena<native.PtyError>();
+      final result = bindings.pty_session_try_write(
+        handle,
+        requestId,
+        nativeBytes,
+        data.length,
+        error,
+      );
+      if (result == native.PtyTryWriteResult.PTY_WRITE_ERROR) {
+        throw PtyIoException('Writing to PTY failed',
+            nativeError: _readNativeError(error.ref));
+      }
+      if (completion != null &&
+          result == native.PtyTryWriteResult.PTY_WRITE_ACCEPTED) {
+        _input.registerCompletion(requestId, completion);
+      }
+      _input.setLastResult(result);
+    });
+  }
+}
+
+final class _FfiPtyInput implements PtyInput {
+  _FfiPtyInput(this._session);
+
+  final _FfiPtySession _session;
+  final _completions = <int, Completer<void>>{};
+  Completer<void>? _writable;
+  int _nextRequestId = 1;
+  int _lastResult = native.PtyTryWriteResult.PTY_WRITE_CLOSED;
+  PtyIoException? _closedError;
+
+  @override
+  Future<void> write(Uint8List data) async {
+    var offset = 0;
+    while (offset < data.length) {
+      final end = math.min(offset + 64 * 1024, data.length);
+      final chunk = Uint8List.sublistView(data, offset, end);
+      final requestId = _nextRequestId++;
+      final completion = Completer<void>();
+      while (true) {
+        _session.tryWrite(chunk, requestId, completion);
+        if (_lastResult == native.PtyTryWriteResult.PTY_WRITE_ACCEPTED) break;
+        if (_lastResult == native.PtyTryWriteResult.PTY_WRITE_CLOSED) {
+          throw _closedError ?? const PtyClosedException();
+        }
+        await _waitWritable();
+      }
+      await completion.future;
+      offset = end;
+    }
+  }
+
+  @override
+  PtyWriteResult tryWrite(Uint8List data) {
+    if (data.isEmpty) return PtyWriteResult.accepted;
+    final requestId = _nextRequestId++;
+    try {
+      _session.tryWrite(data, requestId, null);
+    } on PtyIoException {
+      return PtyWriteResult.closed;
+    }
+    return switch (_lastResult) {
+      native.PtyTryWriteResult.PTY_WRITE_ACCEPTED => PtyWriteResult.accepted,
+      native.PtyTryWriteResult.PTY_WRITE_BACKPRESSURED =>
+        PtyWriteResult.backpressured,
+      _ => PtyWriteResult.closed,
+    };
+  }
+
+  @override
+  Future<void> flush() async {
+    await Future.wait(
+        _completions.values.map((completion) => completion.future));
+  }
+
+  void registerCompletion(int requestId, Completer<void> completion) {
+    _completions[requestId] = completion;
+  }
+
+  void handleWriteComplete(int requestId) {
+    _completions.remove(requestId)?.complete();
+    _writable?.complete();
+    _writable = null;
+  }
+
+  void handleWritable() {
+    _writable?.complete();
+    _writable = null;
+  }
+
+  void handleClosed(PtyIoException error) {
+    _closedError = error;
+    for (final completion in _completions.values) {
+      completion.completeError(error);
+    }
+    _completions.clear();
+    _writable?.completeError(error);
+    _writable = null;
+  }
+
+  Future<void> _waitWritable() {
+    return (_writable ??= Completer<void>()).future;
+  }
+
+  void setLastResult(int result) {
+    _lastResult = result;
+  }
+}
+
+PtyNativeError _readNativeError(native.PtyError error) {
+  final codeUnits = <int>[];
+  for (var index = 0; index < 256; index++) {
+    final value = error.message[index];
+    if (value == 0) break;
+    codeUnits.add(value);
+  }
+  final domain = _enumValue(PtyErrorDomain.values, error.domain);
+  final kind = _enumValue(PtyErrorKind.values, error.kind);
+  return PtyNativeError(
+    domain: domain,
+    kind: kind,
+    code: error.os_code,
+    message: String.fromCharCodes(codeUnits),
+  );
+}
+
+T _enumValue<T>(List<T> values, int index) {
+  if (index < 0 || index >= values.length) return values.last;
+  return values[index];
+}
