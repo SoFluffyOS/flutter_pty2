@@ -72,6 +72,29 @@ jobs:
           -DANDROID_PLATFORM=android-21
           && cmake --build build/android --parallel 4
 
+  android-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run Android emulator integration subset
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          script: flutter test --device-id emulator-5554 test/clean_slate_android_integration_test.dart
+
   sanitizer:
     runs-on: ubuntu-latest
     env:
