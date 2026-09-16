@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -78,6 +79,20 @@ static int pty_open(int *master_fd,
     return openpty(master_fd, slave_fd, NULL, NULL, &mutable_window);
 }
 #endif
+
+static pthread_mutex_t pty_open_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static int pty_open_serialized(int *master_fd,
+                               int *slave_fd,
+                               const struct winsize *window)
+{
+    pthread_mutex_lock(&pty_open_mutex);
+    const int result = pty_open(master_fd, slave_fd, window);
+    const int error_number = errno;
+    pthread_mutex_unlock(&pty_open_mutex);
+    if (result != 0) errno = error_number;
+    return result;
+}
 
 static char *copy_string(const char *value)
 {
@@ -497,7 +512,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     };
     int master = -1;
     int slave = -1;
-    if (pty_open(&master, &slave, &window) != 0) {
+    if (pty_open_serialized(&master, &slave, &window) != 0) {
         pty_error_set_errno(error, PTY_ERROR_SPAWN_FAILED, errno, "openpty failed");
         free_string_vector(argv, options->argument_count + 1);
         free_string_vector(envp, options->environment_count);
