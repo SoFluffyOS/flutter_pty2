@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_pty2/flutter_pty2.dart';
@@ -126,5 +128,57 @@ void main() {
       );
     },
     skip: skipReason,
+  );
+
+  test(
+    'round-trips an exact 100 MiB binary stream',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      const transferSize = 100 * 1024 * 1024;
+      const chunkSize = 64 * 1024;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['copy-input', '$transferSize'],
+        ),
+      );
+      final outputDone = Completer<void>();
+      var received = 0;
+      var mismatched = false;
+      session.output.listen(
+        (chunk) {
+          for (var index = 0; index < chunk.length; index++) {
+            if (chunk[index] != (received + index) % 251) {
+              mismatched = true;
+              break;
+            }
+          }
+          received += chunk.length;
+        },
+        onDone: outputDone.complete,
+      );
+
+      for (var offset = 0; offset < transferSize;) {
+        final length = math.min(chunkSize, transferSize - offset);
+        final chunk = Uint8List(length);
+        for (var index = 0; index < length; index++) {
+          chunk[index] = (offset + index) % 251;
+        }
+        await session.input.write(chunk);
+        offset += length;
+      }
+
+      final exit = await session.done;
+      await outputDone.future;
+      await session.close();
+
+      expect(exit, isA<PtyExitCode>());
+      if (exit case PtyExitCode(:final code)) expect(code, 0);
+      expect(mismatched, isFalse);
+      expect(received, transferSize);
+    },
+    skip: skipReason,
+    timeout: const Timeout(Duration(minutes: 2)),
   );
 }

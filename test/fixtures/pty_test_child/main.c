@@ -93,6 +93,22 @@ static int run_slow_input(unsigned int delay)
     return ferror(stdin) ? 3 : 0;
 }
 
+static int run_copy_input(unsigned long long count)
+{
+    unsigned char buffer[4096];
+    unsigned long long remaining = count;
+    while (remaining != 0) {
+        size_t requested = sizeof(buffer);
+        if (remaining < requested) requested = (size_t)remaining;
+        const size_t length = fread(buffer, 1, requested, stdin);
+        if (length != requested) return 3;
+        if (fwrite(buffer, 1, length, stdout) != length) return 3;
+        if (fflush(stdout) != 0) return 3;
+        remaining -= length;
+    }
+    return 0;
+}
+
 static int run_echo(int argc, char **argv)
 {
     for (int index = 2; index < argc; index++) {
@@ -156,6 +172,9 @@ int main(int argc, char **argv)
     }
     if (strcmp(argv[1], "slow-input") == 0 && argc == 3) {
         return run_slow_input(parse_delay(argv[2]));
+    }
+    if (strcmp(argv[1], "copy-input") == 0 && argc == 3) {
+        return run_copy_input(parse_count(argv[2]));
     }
     if (strcmp(argv[1], "exit") == 0 && argc == 3) {
         return (int)parse_count(argv[2]);
