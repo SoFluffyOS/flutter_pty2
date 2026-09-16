@@ -73,6 +73,7 @@ void main() {
 
       expect(processExit, isA<PtyExitCode>());
       if (processExit case PtyExitCode(:final code)) expect(code, 0);
+      if (processExit case PtyExitCode(:final code)) expect(code, 0);
       final bytes = chunks.expand((chunk) => chunk).toList();
       expect(bytes, List<int>.generate(1000000, (index) => index % 251));
     },
@@ -166,6 +167,31 @@ void main() {
         output.expand((chunk) => chunk).toList(),
         'fixture-sentinel'.codeUnits,
       );
+    },
+    skip: skipReason,
+  );
+
+  test(
+    'closes cleanly while process exit and output drain are racing',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['exit-after-output', '23', 'close-race-sentinel'],
+        ),
+      );
+      final outputFuture = session.output.toList();
+      final closeFuture = session.close();
+      final processExit = await session.processExit;
+      final done = await session.done;
+      await closeFuture;
+      await outputFuture;
+
+      expect(processExit, isA<PtySignalExit>());
+      if (processExit case PtySignalExit(:final signal)) expect(signal, 9);
+      expect(done, processExit);
     },
     skip: skipReason,
   );
