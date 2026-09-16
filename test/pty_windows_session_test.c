@@ -117,6 +117,9 @@ int main(void)
     assert(events.exit_code == 0);
     assert(events.output_length >= strlen("native-session"));
     assert(events.output_closed == 1);
+    PtyError signal_error;
+    assert(pty_session_send_signal(session, 15, 0, &signal_error) == 0);
+    assert(signal_error.kind == PTY_ERROR_UNSUPPORTED);
     pty_session_begin_close(session);
     assert(wait_for_events(1));
     pty_session_release(session);
