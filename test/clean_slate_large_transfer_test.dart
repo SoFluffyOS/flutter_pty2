@@ -6,9 +6,12 @@ import 'dart:typed_data';
 import 'package:flutter_pty2/flutter_pty2.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+const _defaultTransferSize = 100 * 1024 * 1024;
+
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
   final fixture = Platform.environment['PTY_TEST_CHILD'];
+  final transferSize = _configuredTransferSize();
   final configured =
       (Platform.isLinux || Platform.isMacOS || Platform.isWindows) &&
           library?.isNotEmpty == true &&
@@ -20,15 +23,14 @@ void main() {
   };
 
   test(
-    'round-trips 100 MiB from the child while output is paused',
+    'round-trips an exact child-to-host binary stream while output is paused',
     () async {
       final child = fixture;
       if (child == null) return;
-      const transferSize = 100 * 1024 * 1024;
       final session = await Pty.spawn(
         PtySpawnOptions(
           executable: child,
-          arguments: const ['flood-output', '$transferSize'],
+          arguments: ['flood-output', '$transferSize'],
           outputWindowBytes: 16 * 1024,
         ),
       );
@@ -68,7 +70,7 @@ void main() {
   );
 
   test(
-    'round-trips 100 MiB from the host with exact ordering',
+    'round-trips an exact host-to-child binary stream',
     () async {
       final child = fixture;
       if (child == null) return;
@@ -121,4 +123,19 @@ void main() {
     skip: skipReason,
     timeout: const Timeout(Duration(minutes: 12)),
   );
+}
+
+int _configuredTransferSize() {
+  final rawValue = Platform.environment['PTY_LARGE_TRANSFER_BYTES'];
+  if (rawValue == null || rawValue.isEmpty) return _defaultTransferSize;
+
+  final value = int.tryParse(rawValue);
+  if (value == null || value < 1) {
+    throw ArgumentError.value(
+      rawValue,
+      'PTY_LARGE_TRANSFER_BYTES',
+      'must be a positive integer',
+    );
+  }
+  return value;
 }
