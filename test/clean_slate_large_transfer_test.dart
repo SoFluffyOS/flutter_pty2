@@ -74,12 +74,11 @@ void main() {
     () async {
       final child = fixture;
       if (child == null) return;
-      const transferSize = 100 * 1024 * 1024;
       const chunkSize = 64 * 1024;
       final session = await Pty.spawn(
         PtySpawnOptions(
           executable: child,
-          arguments: const ['copy-input', '$transferSize'],
+          arguments: ['copy-input', '$transferSize'],
         ),
       );
       final outputDone = Completer<void>();
