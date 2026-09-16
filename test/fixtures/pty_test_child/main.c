@@ -140,6 +140,63 @@ static int run_echo(int argc, char **argv)
     return fflush(stdout) == 0 ? 0 : 3;
 }
 
+static int run_hold(void)
+{
+    while (1) sleep_milliseconds(1000);
+    return 0;
+}
+
+static int run_spawn_child(const char *self)
+{
+#if defined(_WIN32)
+    (void)self;
+    char executable[MAX_PATH];
+    const DWORD executable_length = GetModuleFileNameA(
+        NULL,
+        executable,
+        (DWORD)sizeof(executable));
+    if (executable_length == 0 || executable_length >= sizeof(executable)) {
+        return 3;
+    }
+    char command_line[MAX_PATH + 16];
+    const int command_length = snprintf(
+        command_line,
+        sizeof(command_line),
+        "\"%s\" hold",
+        executable);
+    if (command_length < 0 || (size_t)command_length >= sizeof(command_line)) {
+        return 3;
+    }
+    STARTUPINFOA startup = {0};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process = {0};
+    if (!CreateProcessA(executable,
+                        command_line,
+                        NULL,
+                        NULL,
+                        TRUE,
+                        0,
+                        NULL,
+                        NULL,
+                        &startup,
+                        &process)) {
+        return 3;
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+#else
+    const pid_t child = fork();
+    if (child < 0) return 3;
+    if (child == 0) {
+        execl(self, self, "hold", (char *)NULL);
+        _exit(127);
+    }
+#endif
+    puts("child-started");
+    if (fflush(stdout) != 0) return 3;
+    while (1) sleep_milliseconds(1000);
+}
+
 int main(int argc, char **argv)
 {
 #if defined(_WIN32)
@@ -154,6 +211,12 @@ int main(int argc, char **argv)
 
     if (strcmp(argv[1], "echo") == 0) {
         return run_echo(argc, argv);
+    }
+    if (strcmp(argv[1], "hold") == 0 && argc == 2) {
+        return run_hold();
+    }
+    if (strcmp(argv[1], "spawn-child") == 0 && argc == 2) {
+        return run_spawn_child(argv[0]);
     }
     if (strcmp(argv[1], "echo-binary") == 0 && argc == 3) {
         write_pattern(parse_count(argv[2]), 0);
