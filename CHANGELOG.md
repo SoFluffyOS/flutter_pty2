@@ -10,6 +10,8 @@
   ownership, shutdown, and platform boundaries.
 * Report host-process CPU time and normalized utilization for idle and loaded
   concurrency benchmarks.
+* Avoid signaling reaped Unix process IDs and make Windows termination and
+  spawn failures idempotent and typed.
 * Align the minimum Flutter SDK constraint with the Dart 3 implementation.
 * Preserve buffered Unix output when a child exits during read backpressure.
 * Add Swift Package Manager support for iOS and macOS.
