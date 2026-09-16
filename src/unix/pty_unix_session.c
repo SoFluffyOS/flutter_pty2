@@ -317,8 +317,8 @@ static int read_output(PtySession *session)
         return PTY_READ_CREDIT_EXHAUSTED;
     }
     size_t capacity = sizeof(buffer);
-    if (!platform->discard_output && session->output_credit < capacity) {
-        capacity = (size_t)session->output_credit;
+    if (!discard && credit < capacity) {
+        capacity = (size_t)credit;
     }
     pthread_mutex_unlock(&platform->mutex);
     if (capacity == 0) return PTY_READ_CREDIT_EXHAUSTED;
