@@ -115,6 +115,18 @@ static int count_live_threads(void)
 {
     return count_directory_entries("/proc/self/task");
 }
+#elif defined(__APPLE__)
+static int count_live_threads(void)
+{
+    struct proc_taskinfo task_info;
+    const int result = proc_pidinfo(getpid(),
+                                    PROC_PIDTASKINFO,
+                                    0,
+                                    &task_info,
+                                    sizeof(task_info));
+    assert(result == (int)sizeof(task_info));
+    return task_info.pti_threadnum;
+}
 #endif
 
 #if defined(__linux__)
@@ -196,7 +208,7 @@ int main(void)
     assert(cycle_count > 0);
     const int baseline_file_descriptors = count_open_file_descriptors();
     const int baseline_child_processes = count_child_processes();
-#if defined(__linux__)
+#if defined(__linux__) || defined(__APPLE__)
     const int baseline_threads = count_live_threads();
 #endif
     const char *arguments[] = {"-c", "exit 0"};
@@ -235,7 +247,7 @@ int main(void)
     assert(stats.pending_write_bytes == 0);
     assert(count_open_file_descriptors() == baseline_file_descriptors);
     assert(count_child_processes() == baseline_child_processes);
-#if defined(__linux__)
+#if defined(__linux__) || defined(__APPLE__)
     assert(count_live_threads() == baseline_threads);
 #endif
     return 0;
