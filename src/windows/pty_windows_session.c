@@ -1060,7 +1060,11 @@ FFI_PLUGIN_EXPORT int32_t pty_session_try_write(PtySession *session,
     PtyWindowsPlatform *platform = windows_platform(session);
     if (platform == NULL || length == 0) return PTY_WRITE_CLOSED;
     EnterCriticalSection(&platform->mutex);
-    if (platform->stopping) {
+    const LONG lifecycle = InterlockedCompareExchange(&session->lifecycle,
+                                                      PTY_LIFECYCLE_CLOSING,
+                                                      PTY_LIFECYCLE_CLOSING);
+    if (platform->stopping || platform->input_closed ||
+        lifecycle >= PTY_LIFECYCLE_CLOSING) {
         LeaveCriticalSection(&platform->mutex);
         return PTY_WRITE_CLOSED;
     }

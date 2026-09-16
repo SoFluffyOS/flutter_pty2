@@ -89,6 +89,10 @@ int main(void)
 
     assert(wait_for_spawn());
     pty_session_mark_closing(session);
+    const uint8_t byte = 1;
+    PtyError write_error;
+    assert(pty_session_try_write(session, 1, &byte, 1, &write_error) ==
+           PTY_WRITE_CLOSED);
     pty_session_begin_close(session);
     pty_session_begin_close(session);
     assert(wait_for_close());

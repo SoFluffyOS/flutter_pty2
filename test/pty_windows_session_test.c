@@ -147,6 +147,10 @@ int main(void)
     assert(pty_session_send_signal(session, 15, 0, &signal_error) == 0);
     assert(signal_error.kind == PTY_ERROR_UNSUPPORTED);
     pty_session_begin_close(session);
+    const uint8_t byte = 1;
+    PtyError write_error;
+    assert(pty_session_try_write(session, 1, &byte, 1, &write_error) ==
+           PTY_WRITE_CLOSED);
     assert(wait_for_events(1));
     pty_session_release(session);
 

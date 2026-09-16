@@ -880,7 +880,9 @@ FFI_PLUGIN_EXPORT int32_t pty_session_try_write(PtySession *session,
     PtyUnixPlatform *platform = platform_for(session);
     if (platform == NULL || length == 0) return PTY_WRITE_CLOSED;
     pthread_mutex_lock(&platform->mutex);
-    if (platform->stopping || platform->input_closed) {
+    if (platform->stopping || platform->input_closed ||
+        atomic_load_explicit(&session->lifecycle, memory_order_acquire) >=
+            PTY_LIFECYCLE_CLOSING) {
         pthread_mutex_unlock(&platform->mutex);
         return PTY_WRITE_CLOSED;
     }
