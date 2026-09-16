@@ -41,6 +41,7 @@ typedef struct PtyWindowsPlatform {
     int writer_done;
     int waiter_done;
     int stopping;
+    int write_backpressured;
     int output_closed;
     int input_closed;
     int session_closed_posted;
@@ -333,7 +334,18 @@ static DWORD WINAPI windows_writer(void *argument)
         }
         if (succeeded) {
             pty_post_write_complete(session->event_port, chunk->request_id);
-            pty_post_simple_event(session->event_port, PTY_EVENT_WRITABLE);
+            int should_post_writable = 0;
+            EnterCriticalSection(&platform->mutex);
+            if (platform->write_backpressured &&
+                pty_write_queue_pending_bytes(&platform->write_queue) <=
+                    session->input_buffer_limit / 2) {
+                platform->write_backpressured = 0;
+                should_post_writable = 1;
+            }
+            LeaveCriticalSection(&platform->mutex);
+            if (should_post_writable) {
+                pty_post_simple_event(session->event_port, PTY_EVENT_WRITABLE);
+            }
         } else {
             PtyError error;
             pty_error_set(&error,
@@ -844,13 +856,18 @@ FFI_PLUGIN_EXPORT int32_t pty_session_try_write(PtySession *session,
     PtyWindowsPlatform *platform = windows_platform(session);
     if (platform == NULL || length == 0) return PTY_WRITE_CLOSED;
     EnterCriticalSection(&platform->mutex);
-    const int stopping = platform->stopping;
-    LeaveCriticalSection(&platform->mutex);
-    if (stopping) return PTY_WRITE_CLOSED;
+    if (platform->stopping) {
+        LeaveCriticalSection(&platform->mutex);
+        return PTY_WRITE_CLOSED;
+    }
     const int result = pty_write_queue_try_enqueue(&platform->write_queue,
                                                    bytes,
                                                    length,
                                                    request_id);
+    if (result == PTY_WRITE_BACKPRESSURED) {
+        platform->write_backpressured = 1;
+    }
+    LeaveCriticalSection(&platform->mutex);
     if (result == PTY_WRITE_ERROR) {
         pty_error_set(out_error,
                       PTY_ERROR_DOMAIN_INTERNAL,

@@ -33,6 +33,7 @@ typedef struct PtyUnixPlatform {
     int reactor_done;
     int waiter_done;
     int stopping;
+    int write_backpressured;
     int discard_output;
     int output_closed;
     int input_closed;
@@ -196,7 +197,18 @@ static int pty_unix_flush_write_queue(PtySession *session)
             return 0;
         }
         pty_post_write_complete(session->event_port, chunk->request_id);
-        pty_post_simple_event(session->event_port, PTY_EVENT_WRITABLE);
+        int should_post_writable = 0;
+        pthread_mutex_lock(&platform->mutex);
+        if (platform->write_backpressured &&
+            pty_write_queue_pending_bytes(&platform->write_queue) <=
+                session->input_buffer_limit / 2) {
+            platform->write_backpressured = 0;
+            should_post_writable = 1;
+        }
+        pthread_mutex_unlock(&platform->mutex);
+        if (should_post_writable) {
+            pty_post_simple_event(session->event_port, PTY_EVENT_WRITABLE);
+        }
         pty_write_chunk_free(chunk);
     }
 }
@@ -605,13 +617,18 @@ FFI_PLUGIN_EXPORT int32_t pty_session_try_write(PtySession *session,
     PtyUnixPlatform *platform = platform_for(session);
     if (platform == NULL || length == 0) return PTY_WRITE_CLOSED;
     pthread_mutex_lock(&platform->mutex);
-    const int stopping = platform->stopping;
-    pthread_mutex_unlock(&platform->mutex);
-    if (stopping) return PTY_WRITE_CLOSED;
+    if (platform->stopping) {
+        pthread_mutex_unlock(&platform->mutex);
+        return PTY_WRITE_CLOSED;
+    }
     const int result = pty_write_queue_try_enqueue(&platform->write_queue,
                                                    bytes,
                                                    length,
                                                    request_id);
+    if (result == PTY_WRITE_BACKPRESSURED) {
+        platform->write_backpressured = 1;
+    }
+    pthread_mutex_unlock(&platform->mutex);
     if (result == PTY_WRITE_ERROR) {
         pty_error_set(out_error,
                       PTY_ERROR_DOMAIN_INTERNAL,
