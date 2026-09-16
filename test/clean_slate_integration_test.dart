@@ -175,6 +175,38 @@ void main() {
   );
 
   test(
+    'starts the child in a Unicode working directory',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final directory = await Directory.systemTemp.createTemp('pty-cwd-你好-');
+      try {
+        final expectedWorkingDirectory = await directory.resolveSymbolicLinks();
+        final session = await Pty.spawn(
+          PtySpawnOptions(
+            executable: child,
+            arguments: const ['print-cwd'],
+            workingDirectory: directory.path,
+          ),
+        );
+        final output = await session.output.toList();
+        final exit = await session.done;
+        await session.close();
+
+        expect(exit, isA<PtyExitCode>());
+        if (exit case PtyExitCode(:final code)) expect(code, 0);
+        expect(
+          utf8.decode(output.expand((chunk) => chunk).toList()),
+          '$expectedWorkingDirectory\n',
+        );
+      } finally {
+        await directory.delete();
+      }
+    },
+    skip: skipReason,
+  );
+
+  test(
     'writes asynchronous input and receives the terminal response',
     () async {
       final session = await Pty.spawn(
