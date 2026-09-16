@@ -51,6 +51,34 @@ full and resumes as Dart consumes the stream. Input supports asynchronous
 child has exited and PTY output reaches EOF. Always await `close()` when the
 session is no longer needed.
 
+### Input and lifecycle semantics
+
+`input.write(bytes)` accepts arbitrary binary data and completes when the
+native backend has written those bytes or fails with a typed exception. Use
+`tryWrite(bytes)` for a non-blocking operation: it returns `accepted` when the
+request was queued, `backpressured` when the bounded input queue is full, or
+`closed` after the session has stopped accepting input. Accepted `tryWrite`
+requests can be awaited together with `input.flush()`.
+
+```dart
+switch (session.input.tryWrite(bytes)) {
+  case PtyWriteResult.accepted:
+    await session.input.flush();
+  case PtyWriteResult.backpressured:
+    await session.input.write(bytes);
+  case PtyWriteResult.closed:
+    throw const PtyClosedException();
+}
+```
+
+`close()` is idempotent and performs asynchronous native shutdown. It may
+discard output that has not already been delivered to the output listener.
+Use `done` when all output must be drained before cleanup. On Unix,
+`sendSignal` targets the configured POSIX process or process group; signal
+operations are unsupported on Windows. Windows uses ConPTY and Job Object
+containment, while Unix process-tree termination is best effort and does not
+guarantee cleanup of every detached descendant.
+
 The existing `Pty.start` API remains available from
 `package:flutter_pty2/flutter_pty.dart` as a compatibility layer. It uses the
 legacy manual-acknowledgement semantics and is not the 2.0 API.
