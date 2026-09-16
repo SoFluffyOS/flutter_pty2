@@ -9,9 +9,14 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
   final fixture = Platform.environment['PTY_TEST_CHILD'];
+  final nativeConfigured = Platform.isMacOS && library?.isNotEmpty == true;
   final integrationConfigured = Platform.isMacOS &&
       library?.isNotEmpty == true &&
       fixture?.isNotEmpty == true;
+  final nativeSkipReason = switch (nativeConfigured) {
+    true => false,
+    _ => 'Set FLUTTER_PTY2_LIBRARY on macOS to run native integration tests.',
+  };
   final skipReason = switch (integrationConfigured) {
     true => false,
     _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on macOS to run '
@@ -180,5 +185,46 @@ void main() {
     },
     skip: skipReason,
     timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test(
+    'reports a typed error for a missing executable',
+    () async {
+      await expectLater(
+        Pty.spawn(
+          const PtySpawnOptions(executable: '/path/that/does/not/exist'),
+        ),
+        throwsA(
+          isA<PtySpawnException>().having(
+            (exception) => exception.nativeError?.kind,
+            'native error kind',
+            PtyErrorKind.notFound,
+          ),
+        ),
+      );
+    },
+    skip: nativeSkipReason,
+  );
+
+  test(
+    'reports a typed error for an invalid working directory',
+    () async {
+      await expectLater(
+        Pty.spawn(
+          const PtySpawnOptions(
+            executable: '/bin/sh',
+            workingDirectory: '/path/that/does/not/exist',
+          ),
+        ),
+        throwsA(
+          isA<PtySpawnException>().having(
+            (exception) => exception.nativeError?.kind,
+            'native error kind',
+            PtyErrorKind.workingDirectoryFailed,
+          ),
+        ),
+      );
+    },
+    skip: nativeSkipReason,
   );
 }

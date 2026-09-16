@@ -385,6 +385,8 @@ PtyNativeError _readNativeError(native.PtyError error) {
 }
 
 T _enumValue<T>(List<T> values, int index) {
-  if (index < 0 || index >= values.length) return values.last;
-  return values[index];
+  if (index <= 0 || index > values.length) {
+    throw StateError('Unknown native enum value: $index');
+  }
+  return values[index - 1];
 }

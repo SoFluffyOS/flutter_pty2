@@ -22,8 +22,8 @@ void main() {
   test('parses typed errors and signal exits', () {
     final event = NativeEvent.parse(<Object?>[
       2,
-      PtyErrorDomain.posix.index,
-      PtyErrorKind.notFound.index,
+      PtyErrorDomain.posix.index + 1,
+      PtyErrorKind.notFound.index + 1,
       2,
       'missing executable',
     ]);
@@ -54,7 +54,7 @@ void main() {
     expect(
       () => NativeEvent.parse(<Object?>[
         9,
-        PtyErrorDomain.posix.index,
+        PtyErrorDomain.posix.index + 1,
         999,
         1,
         'bad kind',

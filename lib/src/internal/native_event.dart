@@ -136,8 +136,8 @@ PtyExit _readExit(List<Object?> message, int index) {
 }
 
 T _enumValue<T>(List<T> values, int index, String name) {
-  if (index < 0 || index >= values.length) {
+  if (index <= 0 || index > values.length) {
     throw FormatException('Unknown $name: $index');
   }
-  return values[index];
+  return values[index - 1];
 }
