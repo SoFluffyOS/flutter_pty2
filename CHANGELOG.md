@@ -13,6 +13,7 @@
 * Make Windows discard output natively after the Dart consumer cancels.
 * Avoid reporting normal Windows ConPTY EOF as an asynchronous I/O error.
 * Reject native writes as soon as session shutdown begins.
+* Validate terminal dimensions in the native ABI before platform-specific casts.
 * Add native lifecycle, transfer, exit-drain, randomized race, finalizer, and
   platform resource-leak coverage, including scheduled 1 GiB transfers and
   10,000 randomized operations.

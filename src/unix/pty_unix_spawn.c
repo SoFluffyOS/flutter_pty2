@@ -522,6 +522,15 @@ int pty_unix_spawn(const PtySpawnOptions *options,
         return 0;
     }
 
+    if (!pty_size_is_valid(options->size)) {
+        pty_error_set(error,
+                      PTY_ERROR_DOMAIN_INTERNAL,
+                      PTY_ERROR_INVALID_ARGUMENT,
+                      EINVAL,
+                      "invalid Unix PTY size");
+        return 0;
+    }
+
     char *resolved_executable = resolve_executable(options, error);
     if (resolved_executable == NULL) return 0;
     char **argv = copy_string_vector(options->arguments,

@@ -143,6 +143,24 @@ static void assert_path_permission_failure_is_preserved(void)
 
 int main(void)
 {
+    const char *invalid_arguments[] = {NULL};
+    PtySpawnOptions invalid_size = base_options(
+        "/bin/sh",
+        invalid_arguments,
+        0,
+        NULL);
+    invalid_size.size.rows = 0;
+    assert_spawn_failure(&invalid_size, PTY_ERROR_INVALID_ARGUMENT, EINVAL);
+    invalid_size = base_options("/bin/sh", invalid_arguments, 0, NULL);
+    invalid_size.size.columns = 0x8000;
+    assert_spawn_failure(&invalid_size, PTY_ERROR_INVALID_ARGUMENT, EINVAL);
+    invalid_size = base_options("/bin/sh", invalid_arguments, 0, NULL);
+    invalid_size.size.pixel_width = -1;
+    assert_spawn_failure(&invalid_size, PTY_ERROR_INVALID_ARGUMENT, EINVAL);
+    invalid_size = base_options("/bin/sh", invalid_arguments, 0, NULL);
+    invalid_size.size.pixel_height = 0x10000;
+    assert_spawn_failure(&invalid_size, PTY_ERROR_INVALID_ARGUMENT, EINVAL);
+
     assert_fd_three_is_not_inherited();
     assert_path_permission_failure_is_preserved();
 

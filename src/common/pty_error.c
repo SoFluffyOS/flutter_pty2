@@ -48,3 +48,11 @@ void pty_error_set_errno(PtyError *error,
                   error_number,
                   detail);
 }
+
+int pty_size_is_valid(PtySize size)
+{
+    return size.rows >= 1 && size.rows <= 0x7fff &&
+           size.columns >= 1 && size.columns <= 0x7fff &&
+           size.pixel_width >= 0 && size.pixel_width <= 0xffff &&
+           size.pixel_height >= 0 && size.pixel_height <= 0xffff;
+}

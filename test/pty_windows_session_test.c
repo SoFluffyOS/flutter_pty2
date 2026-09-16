@@ -134,6 +134,10 @@ int main(void)
     };
     PtySession *session = NULL;
     PtyError error;
+    PtySpawnOptions invalid_options = options;
+    invalid_options.size.rows = 0;
+    assert(pty_session_start(&invalid_options, &session, &error) == 0);
+    assert(error.kind == PTY_ERROR_INVALID_ARGUMENT);
     assert(pty_session_start(&options, &session, &error) == 1);
     assert(session != NULL);
     active_session = session;

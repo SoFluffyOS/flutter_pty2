@@ -803,7 +803,7 @@ FFI_PLUGIN_EXPORT int32_t pty_session_start(const PtySpawnOptions *options,
     if (options == NULL || out_session == NULL || options->executable == NULL ||
         options->executable[0] == '\0' || options->argument_count < 0 ||
         options->environment_count < 0 || options->input_buffer_bytes == 0 ||
-        options->output_window_bytes == 0) {
+        options->output_window_bytes == 0 || !pty_size_is_valid(options->size)) {
         pty_error_set(out_error,
                       PTY_ERROR_DOMAIN_INTERNAL,
                       PTY_ERROR_INVALID_ARGUMENT,
@@ -928,6 +928,14 @@ FFI_PLUGIN_EXPORT int32_t pty_session_resize(PtySession *session,
 {
     pty_error_clear(out_error);
     PtyUnixPlatform *platform = platform_for(session);
+    if (!pty_size_is_valid(size)) {
+        pty_error_set(out_error,
+                      PTY_ERROR_DOMAIN_INTERNAL,
+                      PTY_ERROR_INVALID_ARGUMENT,
+                      EINVAL,
+                      "invalid Unix PTY size");
+        return 0;
+    }
     if (platform == NULL) {
         pty_error_set(out_error, PTY_ERROR_DOMAIN_INTERNAL, PTY_ERROR_CLOSED,
                       EPIPE, "PTY session is closed");

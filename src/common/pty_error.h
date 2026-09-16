@@ -13,5 +13,6 @@ void pty_error_set_errno(PtyError *error,
                          PtyErrorKind kind,
                          int error_number,
                          const char *message);
+int pty_size_is_valid(PtySize size);
 
 #endif

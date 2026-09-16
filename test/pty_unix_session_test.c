@@ -169,6 +169,9 @@ int main(void)
     assert(session != NULL);
     active_session = session;
     assert(wait_for_spawn());
+    PtySize invalid_size = {.rows = 0, .columns = 80};
+    assert(pty_session_resize(session, invalid_size, &error) == 0);
+    assert(error.kind == PTY_ERROR_INVALID_ARGUMENT);
     const uint8_t input[] = {'h', 'e', 'l', 'l', 'o', '\n'};
     assert(pty_session_try_write(session,
                                  42,
