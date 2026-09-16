@@ -482,10 +482,15 @@ static void discard_unix_platform(PtySession *session)
     session->platform = NULL;
 }
 
-static void stop_process(PtyUnixPlatform *platform)
+static void stop_process(PtySession *session)
 {
+    PtyUnixPlatform *platform = platform_for(session);
     if (platform == NULL || platform->process_id <= 0) return;
     pthread_mutex_lock(&platform->mutex);
+    if (atomic_load_explicit(&session->process_exited, memory_order_acquire)) {
+        pthread_mutex_unlock(&platform->mutex);
+        return;
+    }
     const int master_fd = platform->master_fd;
     const pid_t process_id = platform->process_id;
     const pid_t foreground = master_fd >= 0 ? tcgetpgrp(master_fd) : -1;
@@ -511,7 +516,7 @@ static void finish_unstarted_close(PtySession *session)
     PtyUnixPlatform *platform = platform_for(session);
     if (platform == NULL) return;
 
-    stop_process(platform);
+    stop_process(session);
 
     pthread_mutex_lock(&platform->mutex);
     const int master_fd = platform->master_fd;
@@ -544,7 +549,7 @@ static void *close_worker(void *argument)
     pthread_mutex_lock(&platform->mutex);
     platform->stopping = 1;
     pthread_mutex_unlock(&platform->mutex);
-    stop_process(platform);
+    stop_process(session);
     wake_reactor(platform);
     pthread_mutex_lock(&platform->mutex);
     platform->close_done = 1;
@@ -650,7 +655,7 @@ static void *bootstrap_worker(void *argument)
     if (reactor_result != 0) {
         pty_debug_worker_finished(PTY_DEBUG_WORKER_READ);
         pty_session_release(session);
-        stop_process(platform);
+        stop_process(session);
         while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
         discard_unix_platform(session);
         pty_error_set_errno(&error, PTY_ERROR_INTERNAL, reactor_result,
@@ -679,7 +684,7 @@ static void *bootstrap_worker(void *argument)
         platform->waiter_done = 1;
         platform->close_done = 1;
         pthread_mutex_unlock(&platform->mutex);
-        stop_process(platform);
+        stop_process(session);
         wake_reactor(platform);
         while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
         pty_error_set_errno(&error, PTY_ERROR_INTERNAL, waiter_result,
@@ -703,7 +708,7 @@ static void *bootstrap_worker(void *argument)
         platform->stopping = 1;
         platform->close_done = 1;
         pthread_mutex_unlock(&platform->mutex);
-        stop_process(platform);
+        stop_process(session);
         wake_reactor(platform);
         post_startup_cancelled(session);
         maybe_post_session_closed(session);
@@ -895,7 +900,7 @@ FFI_PLUGIN_EXPORT int32_t pty_session_kill(PtySession *session,
                       EPIPE, "PTY session is closed");
         return 0;
     }
-    stop_process(platform);
+    stop_process(session);
     wake_reactor(platform);
     return 1;
 }
@@ -919,6 +924,10 @@ FFI_PLUGIN_EXPORT int32_t pty_session_send_signal(PtySession *session,
         return 0;
     }
     pthread_mutex_lock(&platform->mutex);
+    if (atomic_load_explicit(&session->process_exited, memory_order_acquire)) {
+        pthread_mutex_unlock(&platform->mutex);
+        return 1;
+    }
     const pid_t process_id = platform->process_id;
     pid_t target_pid = process_id;
     if (target == 1) target_pid = -process_id;
@@ -998,7 +1007,7 @@ FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
     platform->stopping = 1;
     platform->close_done = 1;
     pthread_mutex_unlock(&platform->mutex);
-    stop_process(platform);
+    stop_process(session);
     wake_reactor(platform);
     maybe_post_session_closed(session);
 }
