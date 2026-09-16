@@ -105,6 +105,41 @@ void main() {
   );
 
   test(
+    'flushes an accepted tryWrite before process completion',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      const transferSize = 64 * 1024;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['copy-input', '$transferSize'],
+          inputBufferBytes: 64 * 1024,
+        ),
+      );
+      var received = 0;
+      var mismatched = false;
+      final outputSubscription = session.output.listen((chunk) {
+        received += chunk.length;
+        if (chunk.any((byte) => byte != 0)) mismatched = true;
+      });
+      expect(
+        session.input.tryWrite(Uint8List(transferSize)),
+        PtyWriteResult.accepted,
+      );
+      await session.input.flush();
+      final exit = await session.done;
+      await outputSubscription.cancel();
+
+      expect(received, transferSize);
+      expect(mismatched, isFalse);
+      expect(exit, isA<PtyExitCode>());
+      if (exit case PtyExitCode(:final code)) expect(code, 0);
+    },
+    skip: skipReason,
+  );
+
+  test(
     'keeps trailing output available after process exit until done',
     () async {
       final child = fixture;
