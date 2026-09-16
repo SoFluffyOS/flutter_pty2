@@ -198,6 +198,33 @@ void main() {
   );
 
   test(
+    'preserves invalid UTF-8 and embedded NUL bytes in tiny writes',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final expected = Uint8List.fromList([0, 1, 127, 128, 191, 192, 255, 0]);
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: ['copy-input', '${expected.length}'],
+        ),
+      );
+      final outputFuture = session.output.toList();
+      for (final byte in expected) {
+        await session.input.write(Uint8List.fromList([byte]));
+      }
+      final exit = await session.done;
+      final output = await outputFuture;
+      await session.close();
+
+      expect(exit, isA<PtyExitCode>());
+      if (exit case PtyExitCode(:final code)) expect(code, 0);
+      expect(output.expand((chunk) => chunk).toList(), expected);
+    },
+    skip: skipReason,
+  );
+
+  test(
     'flushes an accepted tryWrite before process completion',
     () async {
       final child = fixture;
