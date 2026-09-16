@@ -32,7 +32,7 @@ jobs:
       - name: Run Dart finalizer test
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
-        run: flutter test --enable-vmservice test/clean_slate_finalizer_test.dart
+        run: python3 tool/run_flutter_test_with_vm_service.py test/clean_slate_finalizer_test.dart
 
       - name: Run Dart lifecycle stress
         env:
