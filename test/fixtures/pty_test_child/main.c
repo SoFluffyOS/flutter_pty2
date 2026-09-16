@@ -146,10 +146,9 @@ static int run_hold(void)
     return 0;
 }
 
-static int run_spawn_child(const char *self)
-{
 #if defined(_WIN32)
-    (void)self;
+static int spawn_self_process(const char *self, const char *argument)
+{
     char executable[MAX_PATH];
     const DWORD executable_length = GetModuleFileNameA(
         NULL,
@@ -162,8 +161,9 @@ static int run_spawn_child(const char *self)
     const int command_length = snprintf(
         command_line,
         sizeof(command_line),
-        "\"%s\" hold",
-        executable);
+        "\"%s\" %s",
+        executable,
+        argument);
     if (command_length < 0 || (size_t)command_length >= sizeof(command_line)) {
         return 3;
     }
@@ -184,14 +184,32 @@ static int run_spawn_child(const char *self)
     }
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
+    return 0;
+}
 #else
+static int spawn_self_process(const char *self, const char *argument)
+{
     const pid_t child = fork();
     if (child < 0) return 3;
     if (child == 0) {
-        execl(self, self, "hold", (char *)NULL);
+        execl(self, self, argument, (char *)NULL);
         _exit(127);
     }
+    return 0;
+}
 #endif
+
+static int run_spawn_child(const char *self)
+{
+    if (spawn_self_process(self, "hold") != 0) return 3;
+    puts("child-started");
+    if (fflush(stdout) != 0) return 3;
+    while (1) sleep_milliseconds(1000);
+}
+
+static int run_spawn_grandchild(const char *self)
+{
+    if (spawn_self_process(self, "spawn-child") != 0) return 3;
     puts("child-started");
     if (fflush(stdout) != 0) return 3;
     while (1) sleep_milliseconds(1000);
@@ -217,6 +235,9 @@ int main(int argc, char **argv)
     }
     if (strcmp(argv[1], "spawn-child") == 0 && argc == 2) {
         return run_spawn_child(argv[0]);
+    }
+    if (strcmp(argv[1], "spawn-grandchild") == 0 && argc == 2) {
+        return run_spawn_grandchild(argv[0]);
     }
     if (strcmp(argv[1], "echo-binary") == 0 && argc == 3) {
         write_pattern(parse_count(argv[2]), 0);

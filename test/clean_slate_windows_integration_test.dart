@@ -240,4 +240,43 @@ void main() {
     },
     skip: skipReason,
   );
+
+  test(
+    'kills a Job Object grandchild before done completes',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['spawn-grandchild'],
+        ),
+      );
+      final started = Completer<void>();
+      final outputDone = Completer<void>();
+      var text = '';
+      final subscription = session.output.listen(
+        (chunk) {
+          text += utf8.decode(chunk, allowMalformed: true);
+          if (text.contains('child-started')) {
+            if (started.isCompleted) return;
+            started.complete();
+          }
+        },
+        onDone: outputDone.complete,
+      );
+      try {
+        await started.future.timeout(const Duration(seconds: 5));
+        session.kill();
+        await session.done.timeout(const Duration(seconds: 5));
+        await outputDone.future.timeout(const Duration(seconds: 5));
+
+        expect(text, contains('child-started'));
+      } finally {
+        await subscription.cancel();
+        await session.close();
+      }
+    },
+    skip: skipReason,
+  );
 }

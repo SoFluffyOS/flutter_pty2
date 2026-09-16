@@ -20,5 +20,6 @@ PTY_TEST_CHILD=/tmp/pty_test_child-build/pty_test_child flutter test
 
 Supported commands are `echo`, `echo-binary`, `print-argv`, `print-env`,
 `print-cwd`, `print-size`, `print-size-after`, `flood-output`, `slow-output`,
-`slow-input`, `copy-input`, `slow-copy-input`, `exit`, and `exit-after-output`.
-The `crash` command terminates the child with `SIGSEGV` on POSIX systems.
+`slow-input`, `copy-input`, `slow-copy-input`, `exit`, `exit-after-output`,
+`spawn-child`, `spawn-grandchild`, and `hold`. The `crash` command terminates
+the child with `SIGSEGV` on POSIX systems.
