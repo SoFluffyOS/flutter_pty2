@@ -227,4 +227,28 @@ void main() {
     },
     skip: nativeSkipReason,
   );
+
+  test(
+    'resizes, kills, and closes a live session idempotently',
+    () async {
+      final session = await Pty.spawn(
+        const PtySpawnOptions(
+          executable: '/bin/sh',
+          arguments: ['-c', 'sleep 30'],
+        ),
+      );
+      session.resize(const PtySize(columns: 120, rows: 40));
+      session.kill();
+
+      final exit = await session.processExit.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw StateError('killed process did not exit'),
+      );
+      expect(exit, isA<PtySignalExit>());
+      if (exit case PtySignalExit(:final signal)) expect(signal, 9);
+
+      await Future.wait([session.close(), session.close()]);
+    },
+    skip: nativeSkipReason,
+  );
 }
