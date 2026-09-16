@@ -108,6 +108,16 @@ void main() {
     expect(input.tryWrite(Uint8List.fromList([2])), PtyWriteResult.closed);
   });
 
+  test('handles an unobserved tryWrite completion failure', () async {
+    final input = InputFlowController(
+      nativeTryWrite: (_, __) => PtyWriteResult.accepted,
+    );
+    expect(input.tryWrite(Uint8List.fromList([1])), PtyWriteResult.accepted);
+    input.handleClosed(const PtyClosedException());
+
+    await Future<void>.delayed(Duration.zero);
+  });
+
   test('tryWrite rejects buffers larger than one native request', () {
     final input = InputFlowController(
       maxChunkSize: 2,

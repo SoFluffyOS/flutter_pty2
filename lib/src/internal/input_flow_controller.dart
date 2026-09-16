@@ -65,7 +65,9 @@ final class InputFlowController implements PtyInput {
     try {
       result = nativeTryWrite(id, data);
       if (result == PtyWriteResult.accepted) {
-        _inflight[id] = _PendingWrite(id: id);
+        final pending = _PendingWrite(id: id);
+        _inflight[id] = pending;
+        unawaited(pending.completer.future.catchError((Object _) {}));
       }
     } catch (error, stackTrace) {
       closeWithError(error, stackTrace);
