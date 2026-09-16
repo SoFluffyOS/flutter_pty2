@@ -9,8 +9,9 @@ The original package is no longer maintained, so this fork continues the package
 under a new pub package name.
 
 This package provides a Flutter FFI pseudo-terminal implementation for spawning
-and controlling terminal processes. The clean-slate 2.0 API is being introduced
-alongside the existing API while the native backends are completed.
+and controlling terminal processes. The clean-slate 2.0 API is available
+alongside the existing compatibility API; platform verification is tracked
+separately for Windows and Android.
 
 ## Platform
 

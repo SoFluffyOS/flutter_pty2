@@ -1,5 +1,13 @@
 ## (Unreleased)
 
+* Add the clean-slate `Pty.spawn` session API with raw-byte output, async input,
+  bounded flow control, typed errors, process lifecycle futures, signals, and
+  asynchronous idempotent close.
+* Add native lifecycle, transfer, exit-drain, randomized race, finalizer, and
+  platform resource-leak coverage, including scheduled 1 GiB transfers and
+  10,000 randomized operations.
+* Document clean-slate development commands, benchmarks, native architecture,
+  ownership, shutdown, and platform boundaries.
 * Preserve buffered Unix output when a child exits during read backpressure.
 * Add Swift Package Manager support for iOS and macOS.
 
