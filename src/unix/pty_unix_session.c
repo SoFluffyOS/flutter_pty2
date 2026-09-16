@@ -28,10 +28,13 @@ typedef struct PtyUnixPlatform {
     int wake_pipe[2];
     pthread_t reactor_thread;
     pthread_t waiter_thread;
+    pthread_t close_thread;
     int reactor_started;
     int waiter_started;
     int reactor_done;
     int waiter_done;
+    int close_started;
+    int close_done;
     int stopping;
     int write_backpressured;
     int discard_output;
@@ -130,6 +133,7 @@ static void maybe_post_session_closed(PtySession *session)
     int should_post = 0;
     pthread_mutex_lock(&platform->mutex);
     if (platform->stopping && platform->reactor_done && platform->waiter_done &&
+        platform->close_done &&
         !platform->session_closed_posted) {
         platform->session_closed_posted = 1;
         should_post = 1;
@@ -406,6 +410,24 @@ static void stop_process(PtyUnixPlatform *platform)
     if (foreground > 0) kill(-foreground, SIGKILL);
     kill(-platform->process_id, SIGKILL);
     kill(platform->process_id, SIGKILL);
+}
+
+static void *close_worker(void *argument)
+{
+    PtySession *session = argument;
+    PtyUnixPlatform *platform = platform_for(session);
+    pthread_mutex_lock(&platform->mutex);
+    platform->stopping = 1;
+    pthread_mutex_unlock(&platform->mutex);
+    stop_process(platform);
+    wake_reactor(platform);
+    pthread_mutex_lock(&platform->mutex);
+    platform->close_done = 1;
+    pthread_mutex_unlock(&platform->mutex);
+    pty_debug_worker_finished(PTY_DEBUG_WORKER_CLOSE);
+    maybe_post_session_closed(session);
+    pty_session_release(session);
+    return NULL;
 }
 
 static void *bootstrap_worker(void *argument)
@@ -769,11 +791,42 @@ FFI_PLUGIN_EXPORT void pty_session_discard_output(PtySession *session)
 FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
 {
     if (session == NULL) return;
-    pty_session_mark_closing(session);
+    int lifecycle = atomic_load_explicit(&session->lifecycle,
+                                         memory_order_acquire);
+    if (lifecycle == PTY_LIFECYCLE_STARTING) {
+        pty_session_mark_closing(session);
+        return;
+    }
+    if (lifecycle != PTY_LIFECYCLE_RUNNING) return;
+    int expected_lifecycle = PTY_LIFECYCLE_RUNNING;
+    if (!atomic_compare_exchange_strong_explicit(&session->lifecycle,
+                                                 &expected_lifecycle,
+                                                 PTY_LIFECYCLE_CLOSING,
+                                                 memory_order_acq_rel,
+                                                 memory_order_acquire)) {
+        return;
+    }
     PtyUnixPlatform *platform = platform_for(session);
     if (platform == NULL) return;
     pthread_mutex_lock(&platform->mutex);
+    if (platform->close_started || platform->close_done) {
+        pthread_mutex_unlock(&platform->mutex);
+        return;
+    }
+    platform->close_started = 1;
+    pthread_mutex_unlock(&platform->mutex);
+    pty_debug_worker_started(PTY_DEBUG_WORKER_CLOSE);
+    pty_session_retain(session);
+    const int result = create_detached_worker(&platform->close_thread,
+                                              close_worker,
+                                              session);
+    if (result == 0) return;
+
+    pty_debug_worker_finished(PTY_DEBUG_WORKER_CLOSE);
+    pty_session_release(session);
+    pthread_mutex_lock(&platform->mutex);
     platform->stopping = 1;
+    platform->close_done = 1;
     pthread_mutex_unlock(&platform->mutex);
     stop_process(platform);
     wake_reactor(platform);

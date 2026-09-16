@@ -36,12 +36,15 @@ typedef struct PtyWindowsPlatform {
     HANDLE reader_thread;
     HANDLE writer_thread;
     HANDLE waiter_thread;
+    HANDLE close_thread;
     int reader_started;
     int writer_started;
     int waiter_started;
     int reader_done;
     int writer_done;
     int waiter_done;
+    int close_started;
+    int close_done;
     int stopping;
     int write_backpressured;
     int output_closed;
@@ -238,7 +241,8 @@ static void windows_maybe_post_closed(PtySession *session)
     int should_post = 0;
     EnterCriticalSection(&platform->mutex);
     if (platform->stopping && platform->reader_done && platform->writer_done &&
-        platform->waiter_done && !platform->session_closed_posted) {
+        platform->waiter_done && platform->close_done &&
+        !platform->session_closed_posted) {
         platform->session_closed_posted = 1;
         should_post = 1;
     }
@@ -417,6 +421,20 @@ static void windows_stop_process(PtyWindowsPlatform *platform)
     if (platform->writer_started) CancelSynchronousIo(platform->writer_thread);
 }
 
+static DWORD WINAPI windows_close_worker(void *argument)
+{
+    PtySession *session = argument;
+    PtyWindowsPlatform *platform = windows_platform(session);
+    windows_stop_process(platform);
+    EnterCriticalSection(&platform->mutex);
+    platform->close_done = 1;
+    LeaveCriticalSection(&platform->mutex);
+    pty_debug_worker_finished(PTY_DEBUG_WORKER_CLOSE);
+    windows_maybe_post_closed(session);
+    pty_session_release(session);
+    return 0;
+}
+
 static void windows_free_session(PtySession *session)
 {
     PtyWindowsPlatform *platform = windows_platform(session);
@@ -424,6 +442,7 @@ static void windows_free_session(PtySession *session)
         if (platform->reader_thread != NULL) CloseHandle(platform->reader_thread);
         if (platform->writer_thread != NULL) CloseHandle(platform->writer_thread);
         if (platform->waiter_thread != NULL) CloseHandle(platform->waiter_thread);
+        if (platform->close_thread != NULL) CloseHandle(platform->close_thread);
         if (platform->input_write != NULL) CloseHandle(platform->input_write);
         if (platform->output_read != NULL) CloseHandle(platform->output_read);
         if (platform->process != NULL) CloseHandle(platform->process);
@@ -993,9 +1012,39 @@ FFI_PLUGIN_EXPORT void pty_session_discard_output(PtySession *session)
 FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
 {
     if (session == NULL) return;
-    InterlockedExchange(&session->lifecycle, PTY_LIFECYCLE_CLOSING);
+    const LONG lifecycle = InterlockedCompareExchange(&session->lifecycle,
+                                                      PTY_LIFECYCLE_CLOSING,
+                                                      PTY_LIFECYCLE_RUNNING);
+    if (lifecycle == PTY_LIFECYCLE_STARTING) {
+        InterlockedExchange(&session->lifecycle, PTY_LIFECYCLE_CLOSING);
+        return;
+    }
+    if (lifecycle != PTY_LIFECYCLE_RUNNING) return;
     PtyWindowsPlatform *platform = windows_platform(session);
     if (platform == NULL) return;
+    EnterCriticalSection(&platform->mutex);
+    if (platform->close_started || platform->close_done) {
+        LeaveCriticalSection(&platform->mutex);
+        return;
+    }
+    platform->close_started = 1;
+    LeaveCriticalSection(&platform->mutex);
+    pty_debug_worker_started(PTY_DEBUG_WORKER_CLOSE);
+    pty_session_retain(session);
+    platform->close_thread = CreateThread(NULL,
+                                          0,
+                                          windows_close_worker,
+                                          session,
+                                          0,
+                                          NULL);
+    if (platform->close_thread != NULL) return;
+
+    pty_debug_worker_finished(PTY_DEBUG_WORKER_CLOSE);
+    pty_session_release(session);
+    EnterCriticalSection(&platform->mutex);
+    platform->stopping = 1;
+    platform->close_done = 1;
+    LeaveCriticalSection(&platform->mutex);
     windows_stop_process(platform);
     windows_maybe_post_closed(session);
 }

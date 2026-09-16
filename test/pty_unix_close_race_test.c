@@ -8,6 +8,7 @@
 
 static pthread_mutex_t events_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t events_condition = PTHREAD_COND_INITIALIZER;
+static int spawned;
 static int session_closed;
 
 static bool post_object(Dart_Port_DL port, Dart_CObject *message)
@@ -16,16 +17,34 @@ static bool post_object(Dart_Port_DL port, Dart_CObject *message)
     assert(message != NULL);
     assert(message->type == Dart_CObject_kArray);
     assert(message->value.as_array.length >= 1);
-    if (message->value.as_array.values[0]->value.as_int32 !=
-        PTY_EVENT_SESSION_CLOSED) {
-        return true;
-    }
-
     pthread_mutex_lock(&events_mutex);
-    session_closed = 1;
+    const int32_t event_type = message->value.as_array.values[0]->value.as_int32;
+    if (event_type == PTY_EVENT_SPAWNED) {
+        spawned = 1;
+    } else if (event_type == PTY_EVENT_SESSION_CLOSED) {
+        session_closed = 1;
+    }
     pthread_cond_broadcast(&events_condition);
     pthread_mutex_unlock(&events_mutex);
     return true;
+}
+
+static int wait_for_spawn(void)
+{
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += 5;
+    pthread_mutex_lock(&events_mutex);
+    while (!spawned) {
+        if (pthread_cond_timedwait(&events_condition,
+                                   &events_mutex,
+                                   &deadline) != 0) {
+            pthread_mutex_unlock(&events_mutex);
+            return 0;
+        }
+    }
+    pthread_mutex_unlock(&events_mutex);
+    return 1;
 }
 
 static int wait_for_close(void)
@@ -67,6 +86,8 @@ int main(void)
     assert(pty_session_start(&options, &session, &error) == 1);
     assert(session != NULL);
 
+    assert(wait_for_spawn());
+    pty_session_begin_close(session);
     pty_session_begin_close(session);
     assert(wait_for_close());
     pty_session_release(session);
