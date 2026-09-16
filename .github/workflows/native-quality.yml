@@ -63,6 +63,13 @@ jobs:
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
         run: flutter test test/clean_slate_large_transfer_test.dart
 
+      - name: Run 1 GiB transfer integration
+        env:
+          FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
+          PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
+          PTY_LARGE_TRANSFER_BYTES: 1073741824
+        run: flutter test test/clean_slate_large_transfer_test.dart
+
   android-build:
     runs-on: ubuntu-latest
     steps:
