@@ -105,3 +105,33 @@ jobs:
           ASAN_OPTIONS: halt_on_error=1:detect_leaks=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
           LSAN_OPTIONS: exitcode=23
+
+  thread-sanitizer:
+    runs-on: ubuntu-latest
+    env:
+      TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Configure ThreadSanitizer build
+        run: >-
+          cmake -S src -B build/thread-sanitized -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DFLUTTER_PTY2_BUILD_TESTS=ON
+          "-DCMAKE_C_FLAGS=-fsanitize=thread -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread
+          -DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=thread
+
+      - name: Build native tests
+        run: cmake --build build/thread-sanitized --parallel 4
+
+      - name: Run ThreadSanitizer CTest suite
+        run: ctest --test-dir build/thread-sanitized --output-on-failure
+
+      - name: Run ThreadSanitizer lifecycle stress
+        run: build/thread-sanitized/tests/pty_unix_session_stress_test
+        env:
+          PTY_NATIVE_STRESS_CYCLES: 1000
