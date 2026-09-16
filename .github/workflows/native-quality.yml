@@ -6,6 +6,34 @@ on:
   workflow_dispatch:
 
 jobs:
+  dart-lifecycle-stress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Build native library
+        run: >-
+          cmake -S src -B build/native -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          && cmake --build build/native --parallel 4
+
+      - name: Run Dart lifecycle stress
+        env:
+          FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
+        run: flutter test test/clean_slate_lifecycle_stress_test.dart
+
   android-build:
     runs-on: ubuntu-latest
     steps:
