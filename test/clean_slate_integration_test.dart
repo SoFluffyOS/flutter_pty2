@@ -403,6 +403,30 @@ void main() {
   );
 
   test(
+    'close discards output buffered before the first listener',
+    () async {
+      final session = await Pty.spawn(
+        const PtySpawnOptions(
+          executable: '/bin/sh',
+          arguments: [
+            '-c',
+            'printf buffered-close-output; sleep 30',
+          ],
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      await session.close();
+      final output = await session.output.toList().timeout(
+            const Duration(seconds: 5),
+          );
+
+      expect(output, isEmpty);
+    },
+    skip: nativeSkipReason,
+  );
+
+  test(
     'round-trips an exact 100 MiB binary stream',
     () async {
       final child = fixture;
