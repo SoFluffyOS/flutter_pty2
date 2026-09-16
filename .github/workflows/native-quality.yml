@@ -34,6 +34,17 @@ jobs:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
         run: flutter test test/clean_slate_lifecycle_stress_test.dart
 
+      - name: Build integration fixture
+        run: >-
+          cmake -S test/fixtures/pty_test_child -B build/pty_test_child -G Ninja
+          && cmake --build build/pty_test_child --parallel 4
+
+      - name: Run Dart randomized stress
+        env:
+          FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
+          PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
+        run: flutter test test/clean_slate_random_stress_test.dart
+
   android-build:
     runs-on: ubuntu-latest
     steps:
