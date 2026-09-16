@@ -325,6 +325,7 @@ static void *reactor_worker(void *argument)
     pthread_mutex_lock(&platform->mutex);
     platform->reactor_done = 1;
     pthread_mutex_unlock(&platform->mutex);
+    pty_debug_worker_finished(PTY_DEBUG_WORKER_READ);
     maybe_post_session_closed(session);
     pty_session_release(session);
     return NULL;
@@ -352,6 +353,7 @@ static void *waiter_worker(void *argument)
     pthread_mutex_lock(&platform->mutex);
     platform->waiter_done = 1;
     pthread_mutex_unlock(&platform->mutex);
+    pty_debug_worker_finished(PTY_DEBUG_WORKER_WAIT);
     maybe_post_session_closed(session);
     pty_session_release(session);
     return NULL;
@@ -469,12 +471,14 @@ static void *bootstrap_worker(void *argument)
         return NULL;
     }
 
+    pty_debug_worker_started(PTY_DEBUG_WORKER_READ);
     pty_session_retain(session);
     const int reactor_result = pthread_create(&platform->reactor_thread,
                                               NULL,
                                               reactor_worker,
                                               session);
     if (reactor_result != 0) {
+        pty_debug_worker_finished(PTY_DEBUG_WORKER_READ);
         pty_session_release(session);
         stop_process(platform);
         while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
@@ -490,12 +494,14 @@ static void *bootstrap_worker(void *argument)
         return NULL;
     }
     platform->reactor_started = 1;
+    pty_debug_worker_started(PTY_DEBUG_WORKER_WAIT);
     pty_session_retain(session);
     const int waiter_result = pthread_create(&platform->waiter_thread,
                                              NULL,
                                              waiter_worker,
                                              session);
     if (waiter_result != 0) {
+        pty_debug_worker_finished(PTY_DEBUG_WORKER_WAIT);
         pty_session_release(session);
         pthread_mutex_lock(&platform->mutex);
         platform->stopping = 1;

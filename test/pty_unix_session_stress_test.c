@@ -117,5 +117,14 @@ int main(void)
         assert(wait_for_events(1));
         pty_session_release(session);
     }
+    PtyDebugStats stats;
+    pty_debug_get_stats(&stats);
+    assert(stats.live_sessions == 0);
+    assert(stats.live_read_workers == 0);
+    assert(stats.live_write_workers == 0);
+    assert(stats.live_wait_workers == 0);
+    assert(stats.live_close_workers == 0);
+    assert(stats.pending_write_chunks == 0);
+    assert(stats.pending_write_bytes == 0);
     return 0;
 }

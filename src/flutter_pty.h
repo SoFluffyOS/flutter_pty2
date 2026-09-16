@@ -45,6 +45,17 @@ typedef struct PtyError {
     char message[256];
 } PtyError;
 
+/* Test/debug diagnostics; not part of the public Dart API. */
+typedef struct PtyDebugStats {
+    uint64_t live_sessions;
+    uint64_t live_read_workers;
+    uint64_t live_write_workers;
+    uint64_t live_wait_workers;
+    uint64_t live_close_workers;
+    uint64_t pending_write_chunks;
+    uint64_t pending_write_bytes;
+} PtyDebugStats;
+
 typedef struct PtySize {
     int32_t rows;
     int32_t columns;
@@ -115,6 +126,7 @@ FFI_PLUGIN_EXPORT void pty_session_discard_output(PtySession *session);
 FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session);
 FFI_PLUGIN_EXPORT void pty_session_release(PtySession *session);
 FFI_PLUGIN_EXPORT void pty_session_abandon(void *session);
+FFI_PLUGIN_EXPORT void pty_debug_get_stats(PtyDebugStats *out_stats);
 
 #ifdef __cplusplus
 }

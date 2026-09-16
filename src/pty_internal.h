@@ -57,6 +57,21 @@ void pty_session_release(PtySession *session);
 void pty_session_mark_abandoned(PtySession *session);
 void pty_session_mark_closing(PtySession *session);
 
+typedef enum PtyDebugWorkerKind {
+    PTY_DEBUG_WORKER_READ = 0,
+    PTY_DEBUG_WORKER_WRITE = 1,
+    PTY_DEBUG_WORKER_WAIT = 2,
+    PTY_DEBUG_WORKER_CLOSE = 3
+} PtyDebugWorkerKind;
+
+void pty_debug_worker_started(PtyDebugWorkerKind kind);
+void pty_debug_worker_finished(PtyDebugWorkerKind kind);
+void pty_debug_session_started(void);
+void pty_debug_session_finished(void);
+void pty_debug_pending_write_enqueued(uint64_t bytes);
+void pty_debug_pending_write_dequeued(uint64_t bytes);
+void pty_debug_get_stats(PtyDebugStats *out_stats);
+
 typedef struct PtyWriteChunk {
     struct PtyWriteChunk *next;
     uint8_t *bytes;

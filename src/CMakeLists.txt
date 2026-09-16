@@ -10,6 +10,7 @@ add_library(flutter_pty2 SHARED
   "common/pty_error.c"
   "common/pty_event.c"
   "common/pty_refcount.c"
+  "common/pty_debug_stats.c"
   "common/pty_write_queue.c"
 )
 

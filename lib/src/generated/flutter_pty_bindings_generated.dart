@@ -222,6 +222,20 @@ class FlutterPtyBindings {
   late final _pty_session_abandon = _pty_session_abandonPtr
       .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 
+  void pty_debug_get_stats(
+    ffi.Pointer<PtyDebugStats> out_stats,
+  ) {
+    return _pty_debug_get_stats(
+      out_stats,
+    );
+  }
+
+  late final _pty_debug_get_statsPtr = _lookup<
+          ffi.NativeFunction<ffi.Void Function(ffi.Pointer<PtyDebugStats>)>>(
+      'pty_debug_get_stats');
+  late final _pty_debug_get_stats = _pty_debug_get_statsPtr
+      .asFunction<void Function(ffi.Pointer<PtyDebugStats>)>();
+
   int Dart_InitializeApiDL(
     ffi.Pointer<ffi.Void> data,
   ) {
@@ -370,6 +384,29 @@ final class PtyError extends ffi.Struct {
 
   @ffi.Array.multi([256])
   external ffi.Array<ffi.Char> message;
+}
+
+final class PtyDebugStats extends ffi.Struct {
+  @ffi.Uint64()
+  external int live_sessions;
+
+  @ffi.Uint64()
+  external int live_read_workers;
+
+  @ffi.Uint64()
+  external int live_write_workers;
+
+  @ffi.Uint64()
+  external int live_wait_workers;
+
+  @ffi.Uint64()
+  external int live_close_workers;
+
+  @ffi.Uint64()
+  external int pending_write_chunks;
+
+  @ffi.Uint64()
+  external int pending_write_bytes;
 }
 
 final class PtySize extends ffi.Struct {

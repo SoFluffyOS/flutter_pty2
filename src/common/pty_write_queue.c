@@ -70,6 +70,7 @@ void pty_write_queue_dispose(PtyWriteQueue *queue)
     mutex_unlock(&queue->mutex);
     while (chunk != NULL) {
         PtyWriteChunk *next = chunk->next;
+        pty_debug_pending_write_dequeued(chunk->length - chunk->offset);
         pty_write_chunk_free(chunk);
         chunk = next;
     }
@@ -116,6 +117,7 @@ int pty_write_queue_try_enqueue(PtyWriteQueue *queue,
     }
     queue->tail = chunk;
     queue->pending_bytes += length;
+    pty_debug_pending_write_enqueued(length);
     mutex_unlock(&queue->mutex);
     return PTY_WRITE_ACCEPTED;
 }
@@ -129,6 +131,7 @@ PtyWriteChunk *pty_write_queue_dequeue(PtyWriteQueue *queue)
         queue->head = chunk->next;
         if (queue->head == NULL) queue->tail = NULL;
         queue->pending_bytes -= chunk->length - chunk->offset;
+        pty_debug_pending_write_dequeued(chunk->length - chunk->offset);
         chunk->next = NULL;
     }
     mutex_unlock(&queue->mutex);
@@ -152,6 +155,7 @@ int pty_write_queue_requeue_front(PtyWriteQueue *queue, PtyWriteChunk *chunk)
     queue->head = chunk;
     if (queue->tail == NULL) queue->tail = chunk;
     queue->pending_bytes += remaining;
+    pty_debug_pending_write_enqueued(remaining);
     mutex_unlock(&queue->mutex);
     return PTY_WRITE_ACCEPTED;
 }

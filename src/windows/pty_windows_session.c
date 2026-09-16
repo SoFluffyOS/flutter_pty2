@@ -300,6 +300,7 @@ static DWORD WINAPI windows_reader(void *argument)
     EnterCriticalSection(&platform->mutex);
     platform->reader_done = 1;
     LeaveCriticalSection(&platform->mutex);
+    pty_debug_worker_finished(PTY_DEBUG_WORKER_READ);
     windows_maybe_post_closed(session);
     pty_session_release(session);
     return 0;
@@ -374,6 +375,7 @@ static DWORD WINAPI windows_writer(void *argument)
     EnterCriticalSection(&platform->mutex);
     platform->writer_done = 1;
     LeaveCriticalSection(&platform->mutex);
+    pty_debug_worker_finished(PTY_DEBUG_WORKER_WRITE);
     windows_maybe_post_closed(session);
     pty_session_release(session);
     return 0;
@@ -397,6 +399,7 @@ static DWORD WINAPI windows_waiter(void *argument)
     EnterCriticalSection(&platform->mutex);
     platform->waiter_done = 1;
     LeaveCriticalSection(&platform->mutex);
+    pty_debug_worker_finished(PTY_DEBUG_WORKER_WAIT);
     windows_maybe_post_closed(session);
     pty_session_release(session);
     return 0;
@@ -705,18 +708,30 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         return 0;
     }
 
+    pty_debug_worker_started(PTY_DEBUG_WORKER_READ);
     pty_session_retain(session);
     platform->reader_thread = CreateThread(NULL, 0, windows_reader, session, 0, NULL);
     if (platform->reader_thread != NULL) platform->reader_started = 1;
-    else pty_session_release(session);
+    else {
+        pty_debug_worker_finished(PTY_DEBUG_WORKER_READ);
+        pty_session_release(session);
+    }
+    pty_debug_worker_started(PTY_DEBUG_WORKER_WRITE);
     pty_session_retain(session);
     platform->writer_thread = CreateThread(NULL, 0, windows_writer, session, 0, NULL);
     if (platform->writer_thread != NULL) platform->writer_started = 1;
-    else pty_session_release(session);
+    else {
+        pty_debug_worker_finished(PTY_DEBUG_WORKER_WRITE);
+        pty_session_release(session);
+    }
+    pty_debug_worker_started(PTY_DEBUG_WORKER_WAIT);
     pty_session_retain(session);
     platform->waiter_thread = CreateThread(NULL, 0, windows_waiter, session, 0, NULL);
     if (platform->waiter_thread != NULL) platform->waiter_started = 1;
-    else pty_session_release(session);
+    else {
+        pty_debug_worker_finished(PTY_DEBUG_WORKER_WAIT);
+        pty_session_release(session);
+    }
     if (!platform->reader_started || !platform->writer_started ||
         !platform->waiter_started) {
         windows_stop_process(platform);

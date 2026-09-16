@@ -45,12 +45,14 @@ if (WIN32)
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_event.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_refcount.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_debug_stats.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_write_queue.c"
   )
 else()
   add_pty_native_test(
     pty_write_queue_test
     pty_write_queue_test.c
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_debug_stats.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_write_queue.c"
   )
   add_pty_native_test(
@@ -70,6 +72,7 @@ else()
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_event.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_refcount.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_debug_stats.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_write_queue.c"
   )
   add_pty_native_test(pty_unix_session_test pty_unix_session_test.c ${PTY_SESSION_SOURCES})

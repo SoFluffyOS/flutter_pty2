@@ -26,6 +26,7 @@ void pty_session_init(PtySession *session)
     session->output_credit = 0;
     session->platform = NULL;
     session->free_function = NULL;
+    pty_debug_session_started();
 }
 
 void pty_session_retain(PtySession *session)
@@ -50,6 +51,7 @@ FFI_PLUGIN_EXPORT void pty_session_release(PtySession *session)
                                 memory_order_acq_rel) == 1;
 #endif
     if (!should_free) return;
+    pty_debug_session_finished();
     if (session->free_function != NULL) {
         session->free_function(session);
         return;
