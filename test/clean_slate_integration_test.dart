@@ -305,6 +305,46 @@ void main() {
   );
 
   test(
+    'delivers resized dimensions to the child PTY',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['print-size-after', '100'],
+          size: const PtySize(
+            columns: 80,
+            rows: 24,
+            pixelWidth: 640,
+            pixelHeight: 480,
+          ),
+        ),
+      );
+      final outputFuture = session.output.toList();
+      session.resize(
+        const PtySize(
+          columns: 120,
+          rows: 40,
+          pixelWidth: 1920,
+          pixelHeight: 1080,
+        ),
+      );
+      final exit = await session.done;
+      final output = await outputFuture;
+      await session.close();
+
+      expect(exit, isA<PtyExitCode>());
+      if (exit case PtyExitCode(:final code)) expect(code, 0);
+      expect(
+        output.expand((chunk) => chunk).toList(),
+        '40 120 1920 1080\n'.codeUnits,
+      );
+    },
+    skip: skipReason,
+  );
+
+  test(
     'fails a pending write when the session closes',
     () async {
       final child = fixture;

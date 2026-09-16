@@ -10,6 +10,8 @@
 #define unlink _unlink
 #else
 #include <sys/select.h>
+#include <sys/ioctl.h>
+#include <termios.h>
 #include <unistd.h>
 #endif
 
@@ -110,6 +112,23 @@ static int run_copy_input(unsigned long long count, unsigned int delay)
     return 0;
 }
 
+static int run_print_size(unsigned int delay)
+{
+    sleep_milliseconds(delay);
+#if defined(_WIN32)
+    puts("0 0 0 0");
+#else
+    struct winsize window;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &window) != 0) return 3;
+    printf("%u %u %u %u\n",
+           (unsigned int)window.ws_row,
+           (unsigned int)window.ws_col,
+           (unsigned int)window.ws_xpixel,
+           (unsigned int)window.ws_ypixel);
+#endif
+    return fflush(stdout) == 0 ? 0 : 3;
+}
+
 static int run_echo(int argc, char **argv)
 {
     for (int index = 2; index < argc; index++) {
@@ -179,6 +198,12 @@ int main(int argc, char **argv)
     }
     if (strcmp(argv[1], "slow-copy-input") == 0 && argc == 4) {
         return run_copy_input(parse_count(argv[2]), parse_delay(argv[3]));
+    }
+    if (strcmp(argv[1], "print-size") == 0 && argc == 2) {
+        return run_print_size(0);
+    }
+    if (strcmp(argv[1], "print-size-after") == 0 && argc == 3) {
+        return run_print_size(parse_delay(argv[2]));
     }
     if (strcmp(argv[1], "exit") == 0 && argc == 3) {
         return (int)parse_count(argv[2]);

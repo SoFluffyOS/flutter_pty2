@@ -19,5 +19,5 @@ PTY_TEST_CHILD=/tmp/pty_test_child-build/pty_test_child flutter test
 ```
 
 Supported commands are `echo`, `echo-binary`, `print-argv`, `print-env`,
-`print-cwd`, `flood-output`, `slow-output`, `slow-input`, `copy-input`,
-`slow-copy-input`, `exit`, and `exit-after-output`.
+`print-cwd`, `print-size`, `print-size-after`, `flood-output`, `slow-output`,
+`slow-input`, `copy-input`, `slow-copy-input`, `exit`, and `exit-after-output`.
