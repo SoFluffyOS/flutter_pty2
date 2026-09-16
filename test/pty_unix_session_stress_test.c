@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 
 #include "../src/flutter_pty.h"
@@ -58,6 +60,12 @@ static int wait_for_events(int wait_for_close)
         if (pthread_cond_timedwait(&events.condition,
                                    &events.mutex,
                                    &deadline) != 0) {
+            fprintf(stderr,
+                    "native stress timeout: process_exit=%d output_closed=%d "
+                    "session_closed=%d\n",
+                    events.process_exit,
+                    events.output_closed,
+                    events.session_closed);
             pthread_mutex_unlock(&events.mutex);
             return 0;
         }
@@ -78,6 +86,12 @@ static void reset_events(void)
 int main(void)
 {
     Dart_PostCObject_DL = post_object;
+    int cycle_count = 1000;
+    const char *configured_cycle_count = getenv("PTY_NATIVE_STRESS_CYCLES");
+    if (configured_cycle_count != NULL) {
+        cycle_count = (int)strtol(configured_cycle_count, NULL, 10);
+    }
+    assert(cycle_count > 0);
     const char *arguments[] = {"-c", "exit 0"};
     const char *environment[] = {"PATH=/usr/bin:/bin"};
     const PtySpawnOptions options = {
@@ -92,7 +106,7 @@ int main(void)
         .event_port = 1,
     };
 
-    for (int cycle = 0; cycle < 1000; cycle++) {
+    for (int cycle = 0; cycle < cycle_count; cycle++) {
         reset_events();
         PtySession *session = NULL;
         PtyError error;

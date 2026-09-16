@@ -13,6 +13,8 @@ add_library(flutter_pty2 SHARED
   "common/pty_write_queue.c"
 )
 
+option(FLUTTER_PTY2_BUILD_TESTS "Build native flutter_pty2 tests" OFF)
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_link_libraries(flutter_pty2 PRIVATE util)
 endif()
@@ -23,6 +25,15 @@ set_target_properties(flutter_pty2 PROPERTIES
 )
 
 target_compile_definitions(flutter_pty2 PUBLIC DART_SHARED_LIB)
+
+if (FLUTTER_PTY2_BUILD_TESTS)
+  include(CTest)
+  enable_testing()
+  add_subdirectory(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../test"
+    "${CMAKE_CURRENT_BINARY_DIR}/tests"
+  )
+endif()
 
 if (ANDROID)
   # Support Android 15 16k page size.
