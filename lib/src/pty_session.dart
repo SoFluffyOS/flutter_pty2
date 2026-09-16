@@ -17,6 +17,9 @@ abstract interface class PtySession {
 
   Future<PtyExit> get processExit;
 
+  /// Completes after the child exits and all native output is delivered.
+  ///
+  /// After this future completes, no more output bytes are emitted.
   Future<PtyExit> get done;
 
   void resize(PtySize size);

@@ -428,6 +428,55 @@ void main() {
   );
 
   test(
+    'does not complete done before paused output is delivered',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['exit-after-output', '0', 'paused-sentinel'],
+        ),
+      );
+      final received = <int>[];
+      final outputDone = Completer<void>();
+      final subscription = session.output.listen(
+        (chunk) => received.addAll(chunk),
+        onDone: outputDone.complete,
+      );
+      subscription.pause();
+      var paused = true;
+      try {
+        final processExit = await session.processExit.timeout(
+          const Duration(seconds: 5),
+        );
+        expect(processExit, isA<PtyExitCode>());
+
+        var doneObserved = false;
+        final doneFuture = session.done.then((exit) {
+          doneObserved = true;
+          return exit;
+        });
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(doneObserved, isFalse);
+
+        subscription.resume();
+        paused = false;
+        final done = await doneFuture.timeout(const Duration(seconds: 5));
+        await outputDone.future.timeout(const Duration(seconds: 5));
+
+        expect(done, processExit);
+        expect(received, 'paused-sentinel'.codeUnits);
+      } finally {
+        if (paused) subscription.resume();
+        await subscription.cancel();
+        await session.close();
+      }
+    },
+    skip: skipReason,
+  );
+
+  test(
     'closes cleanly while process exit and output drain are racing',
     () async {
       final session = await Pty.spawn(

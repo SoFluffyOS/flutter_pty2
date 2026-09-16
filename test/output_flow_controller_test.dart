@@ -66,9 +66,11 @@ void main() {
   });
 
   test('closes only after pending output has drained', () async {
+    final drained = Completer<void>();
     final controller = OutputFlowController(
       acknowledge: (_) {},
       discardOutput: () {},
+      onDrained: drained.complete,
     );
     final received = <int>[];
     final done = Completer<void>();
@@ -81,8 +83,10 @@ void main() {
     controller.handleNativeClosed();
 
     expect(done.isCompleted, isFalse);
+    expect(drained.isCompleted, isFalse);
     subscription.resume();
     await done.future;
+    await drained.future;
 
     expect(received, [7]);
     await subscription.cancel();

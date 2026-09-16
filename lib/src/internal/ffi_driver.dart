@@ -155,6 +155,7 @@ final class _FfiPtySessionState implements NativeEventHandler {
     _output = OutputFlowController(
       acknowledge: _acknowledgeOutput,
       discardOutput: _discardOutput,
+      onDrained: _handleOutputDrained,
     );
     _input = InputFlowController(nativeTryWrite: _tryWrite);
   }
@@ -169,6 +170,7 @@ final class _FfiPtySessionState implements NativeEventHandler {
   late final InputFlowController _input;
   PtyExit? _processExit;
   bool _outputClosed = false;
+  bool _outputDrained = false;
 
   OutputFlowController get output => _output;
 
@@ -188,6 +190,11 @@ final class _FfiPtySessionState implements NativeEventHandler {
 
   void _discardOutput() {
     bindings.pty_session_discard_output(handle);
+  }
+
+  void _handleOutputDrained() {
+    _outputDrained = true;
+    _maybeCompleteDone();
   }
 
   @override
@@ -241,7 +248,12 @@ final class _FfiPtySessionState implements NativeEventHandler {
 
   void _maybeCompleteDone() {
     final exit = _processExit;
-    if (exit == null || !_outputClosed || _doneCompleter.isCompleted) return;
+    if (exit == null ||
+        !_outputClosed ||
+        !_outputDrained ||
+        _doneCompleter.isCompleted) {
+      return;
+    }
     _doneCompleter.complete(exit);
   }
 

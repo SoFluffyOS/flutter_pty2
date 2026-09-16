@@ -6,9 +6,11 @@ final class OutputFlowController {
   OutputFlowController({
     required void Function(int bytes) acknowledge,
     required void Function() discardOutput,
+    void Function()? onDrained,
     Object? owner,
   })  : _acknowledge = acknowledge,
         _discardOutput = discardOutput,
+        _onDrained = onDrained,
         _ownerReference = switch (owner) {
           final owner? => WeakReference(owner),
           null => null,
@@ -24,6 +26,7 @@ final class OutputFlowController {
 
   final void Function(int bytes) _acknowledge;
   final void Function() _discardOutput;
+  final void Function()? _onDrained;
   Object? _owner;
   WeakReference<Object>? _ownerReference;
   final Queue<Uint8List> _pending = Queue<Uint8List>();
@@ -33,6 +36,7 @@ final class OutputFlowController {
   bool _paused = false;
   bool _cancelled = false;
   bool _nativeClosed = false;
+  bool _drainedNotified = false;
 
   Stream<Uint8List> get stream => _controller.stream;
 
@@ -72,6 +76,7 @@ final class OutputFlowController {
     }
     _discardOutput();
     _nativeClosed = true;
+    _notifyDrained();
     if (!_controller.isClosed) unawaited(_controller.close());
   }
 
@@ -98,6 +103,7 @@ final class OutputFlowController {
       _acknowledge(_pending.removeFirst().length);
     }
     _discardOutput();
+    _notifyDrained();
   }
 
   void _drain() {
@@ -106,8 +112,15 @@ final class OutputFlowController {
       _controller.add(bytes);
       _acknowledge(bytes.length);
     }
+    _notifyDrained();
     if (_nativeClosed && _pending.isEmpty && !_controller.isClosed) {
       unawaited(_controller.close());
     }
+  }
+
+  void _notifyDrained() {
+    if (!_nativeClosed || _pending.isNotEmpty || _drainedNotified) return;
+    _drainedNotified = true;
+    _onDrained?.call();
   }
 }
