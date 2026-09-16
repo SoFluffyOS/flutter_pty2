@@ -53,6 +53,16 @@ final class OutputFlowController {
     await _controller.close();
   }
 
+  void closeAndDiscard() {
+    _cancelled = true;
+    while (_pending.isNotEmpty) {
+      _acknowledge(_pending.removeFirst().length);
+    }
+    _discardOutput();
+    _nativeClosed = true;
+    if (!_controller.isClosed) unawaited(_controller.close());
+  }
+
   void _handleListen() {
     _hasListener = true;
     _drain();

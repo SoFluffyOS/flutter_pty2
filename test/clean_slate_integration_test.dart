@@ -350,12 +350,13 @@ void main() {
   test(
     'closes cleanly while process exit and output drain are racing',
     () async {
-      final child = fixture;
-      if (child == null) return;
       final session = await Pty.spawn(
-        PtySpawnOptions(
-          executable: child,
-          arguments: const ['exit-after-output', '23', 'close-race-sentinel'],
+        const PtySpawnOptions(
+          executable: '/bin/sh',
+          arguments: [
+            '-c',
+            'printf close-race-sentinel; sleep 30; exit 23',
+          ],
         ),
       );
       final outputFuture = session.output.toList();
@@ -369,7 +370,7 @@ void main() {
       if (processExit case PtySignalExit(:final signal)) expect(signal, 9);
       expect(done, processExit);
     },
-    skip: skipReason,
+    skip: nativeSkipReason,
   );
 
   test(

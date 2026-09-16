@@ -346,6 +346,7 @@ final class _FfiPtySession
     _input.closeWithError(const PtyClosedException());
     bindings.pty_session_begin_close(handle);
     await _closedCompleter.future;
+    _output.closeAndDiscard();
     if (!_finalizerDetached) {
       _finalizer.detach(_finalizerDetachToken);
       _finalizerDetached = true;
