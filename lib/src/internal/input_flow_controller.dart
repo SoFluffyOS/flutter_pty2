@@ -34,7 +34,7 @@ final class InputFlowController implements PtyInput {
     if (data.isEmpty) return;
 
     _retainOwner();
-    final operation = _WriteOperation(data);
+    final operation = _WriteOperation(Uint8List.fromList(data));
     _waiting.addLast(operation);
     _pump();
     try {

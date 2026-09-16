@@ -69,6 +69,35 @@ void main() {
     await Future.wait([first, second]);
   });
 
+  test('snapshots data before retrying after native backpressure', () async {
+    final accepted = <Uint8List>[];
+    var backpressured = true;
+    final input = InputFlowController(
+      maxChunkSize: 2,
+      nativeTryWrite: (_, bytes) {
+        if (accepted.length == 1 && backpressured) {
+          return PtyWriteResult.backpressured;
+        }
+        accepted.add(Uint8List.fromList(bytes));
+        return PtyWriteResult.accepted;
+      },
+    );
+    final data = Uint8List.fromList([1, 2, 3, 4]);
+    final write = input.write(data);
+    data.setAll(0, [9, 9, 9, 9]);
+
+    backpressured = false;
+    input.handleWritable();
+    input.handleWriteComplete(1);
+    input.handleWriteComplete(2);
+    await write;
+
+    expect(accepted, [
+      Uint8List.fromList([1, 2]),
+      Uint8List.fromList([3, 4]),
+    ]);
+  });
+
   test('closes all pending writes with the same error', () async {
     final input = InputFlowController(
       nativeTryWrite: (_, __) => PtyWriteResult.accepted,
