@@ -14,6 +14,13 @@ final class InputFlowController implements PtyInput {
 
   final PtyWriteResult Function(int requestId, Uint8List bytes) nativeTryWrite;
   final int maxChunkSize;
+  Object? _owner;
+  WeakReference<Object>? _ownerReference;
+
+  void setOwner(Object owner) {
+    _ownerReference = WeakReference(owner);
+  }
+
   final Queue<_PendingWrite> _waiting = Queue<_PendingWrite>();
   final Map<int, _PendingWrite> _inflight = <int, _PendingWrite>{};
 
@@ -26,6 +33,7 @@ final class InputFlowController implements PtyInput {
     if (_closed) throw const PtyClosedException();
     if (data.isEmpty) return;
 
+    _retainOwner();
     final futures = <Future<void>>[];
     var offset = 0;
     while (offset < data.length) {
@@ -39,7 +47,11 @@ final class InputFlowController implements PtyInput {
       offset = end;
     }
     _pump();
-    await Future.wait(futures);
+    try {
+      await Future.wait(futures);
+    } finally {
+      _releaseOwnerIfIdle();
+    }
   }
 
   @override
@@ -57,17 +69,20 @@ final class InputFlowController implements PtyInput {
       return PtyWriteResult.backpressured;
     }
 
+    _retainOwner();
     final id = _nextRequestId++;
+    PtyWriteResult result;
     try {
-      final result = nativeTryWrite(id, data);
+      result = nativeTryWrite(id, data);
       if (result == PtyWriteResult.accepted) {
         _inflight[id] = _PendingWrite(id: id, bytes: Uint8List(0));
       }
-      return result;
     } catch (error, stackTrace) {
       closeWithError(error, stackTrace);
       return PtyWriteResult.closed;
     }
+    _releaseOwnerIfIdle();
+    return result;
   }
 
   @override
@@ -83,6 +98,7 @@ final class InputFlowController implements PtyInput {
     if (_closed) return;
     _waitingForWritable = false;
     _pump();
+    _releaseOwnerIfIdle();
   }
 
   void handleWriteComplete(int requestId) {
@@ -90,6 +106,7 @@ final class InputFlowController implements PtyInput {
     if (pending == null) return;
     if (!pending.completer.isCompleted) pending.completer.complete();
     _pump();
+    _releaseOwnerIfIdle();
   }
 
   void handleClosed(Object error) {
@@ -111,6 +128,7 @@ final class InputFlowController implements PtyInput {
     }
     _waiting.clear();
     _inflight.clear();
+    _owner = null;
   }
 
   void _pump() {
@@ -136,6 +154,16 @@ final class InputFlowController implements PtyInput {
           return;
       }
     }
+  }
+
+  void _retainOwner() {
+    _owner = _ownerReference?.target;
+  }
+
+  void _releaseOwnerIfIdle() {
+    final owner = _owner;
+    if (owner == null) return;
+    if (_waiting.isEmpty && _inflight.isEmpty) _owner = null;
   }
 }
 

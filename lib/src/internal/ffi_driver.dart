@@ -27,6 +27,11 @@ final class FfiPtyDriver {
   static final DynamicLibrary _library = _openLibrary();
   static final native.FlutterPtyBindings _bindings =
       native.FlutterPtyBindings(_library);
+  static final NativeFinalizer _sessionFinalizer = NativeFinalizer(
+    _library.lookup<NativeFunction<Void Function(Pointer<Void>)>>(
+      'pty_session_abandon',
+    ),
+  );
   static bool _initialized = false;
 
   Future<PtySession> spawn(PtySpawnOptions options) async {
@@ -106,11 +111,7 @@ final class FfiPtyDriver {
       handle: nativeSession,
       bindings: _bindings,
       port: port,
-      finalizer: NativeFinalizer(
-        _library.lookup<NativeFunction<Void Function(Pointer<Void>)>>(
-          'pty_session_abandon',
-        ),
-      ),
+      finalizer: _sessionFinalizer,
     );
     session.attach();
     try {
@@ -146,92 +147,54 @@ DynamicLibrary _openLibrary() {
   throw UnsupportedError('Unknown platform: ${Platform.operatingSystem}');
 }
 
-final class _FfiPtySession
-    implements PtySession, NativeEventHandler, Finalizable {
-  _FfiPtySession({
+final class _FfiPtySessionState implements NativeEventHandler {
+  _FfiPtySessionState({
     required this.handle,
     required this.bindings,
-    required this.port,
-    required NativeFinalizer finalizer,
-  }) : _finalizer = finalizer {
+  }) {
     _output = OutputFlowController(
-      acknowledge: (bytes) => bindings.pty_session_ack_output(handle, bytes),
-      discardOutput: () => bindings.pty_session_discard_output(handle),
+      acknowledge: _acknowledgeOutput,
+      discardOutput: _discardOutput,
     );
     _input = InputFlowController(nativeTryWrite: _tryWrite);
   }
 
   final Pointer<native.PtySession> handle;
   final native.FlutterPtyBindings bindings;
-  final ReceivePort port;
-  final NativeFinalizer _finalizer;
-  final _finalizerDetachToken = Object();
-  final _spawnCompleter = Completer<PtySession>();
+  final _spawnCompleter = Completer<void>();
   final _processExitCompleter = Completer<PtyExit>();
   final _doneCompleter = Completer<PtyExit>();
   final _closedCompleter = Completer<void>();
   late final OutputFlowController _output;
   late final InputFlowController _input;
-  late final NativeEventPump _eventPump;
   PtyExit? _processExit;
   bool _outputClosed = false;
-  bool _closing = false;
-  bool _finalizerDetached = false;
 
-  @override
-  int get pid {
-    _ensureOpen();
-    return bindings.pty_session_pid(handle).toInt();
-  }
+  OutputFlowController get output => _output;
 
-  @override
-  PtyCapabilities get capabilities {
-    if (Platform.isWindows) {
-      return const PtyCapabilities(
-        posixSignals: false,
-        foregroundProcessGroups: false,
-        pixelDimensions: false,
-        reliableProcessTreeKill: true,
-        conPty: true,
-      );
-    }
-    return const PtyCapabilities(
-      posixSignals: true,
-      foregroundProcessGroups: true,
-      pixelDimensions: true,
-      reliableProcessTreeKill: false,
-      conPty: false,
-    );
-  }
+  InputFlowController get input => _input;
 
-  @override
-  Stream<Uint8List> get output => _output.stream;
+  Future<void> get spawned => _spawnCompleter.future;
 
-  @override
-  PtyInput get input => _input;
-
-  @override
   Future<PtyExit> get processExit => _processExitCompleter.future;
 
-  @override
   Future<PtyExit> get done => _doneCompleter.future;
 
-  void attach() {
-    _eventPump = NativeEventPump(port)..attach(this);
-    _finalizer.attach(
-      this,
-      handle.cast(),
-      detach: _finalizerDetachToken,
-    );
+  Future<void> get closed => _closedCompleter.future;
+
+  void _acknowledgeOutput(int bytes) {
+    bindings.pty_session_ack_output(handle, bytes);
   }
 
-  Future<PtySession> waitForSpawn() => _spawnCompleter.future;
+  void _discardOutput() {
+    bindings.pty_session_discard_output(handle);
+  }
 
   @override
   void handleNativeEvent(NativeEvent event) {
     switch (event) {
       case NativeSpawned():
-        if (!_spawnCompleter.isCompleted) _spawnCompleter.complete(this);
+        if (!_spawnCompleter.isCompleted) _spawnCompleter.complete();
       case NativeSpawnFailed(:final error):
         if (!_spawnCompleter.isCompleted) {
           _spawnCompleter.completeError(
@@ -281,6 +244,116 @@ final class _FfiPtySession
     if (exit == null || !_outputClosed || _doneCompleter.isCompleted) return;
     _doneCompleter.complete(exit);
   }
+
+  PtyWriteResult _tryWrite(int requestId, Uint8List data) {
+    return using((arena) {
+      final nativeBytes = arena<Uint8>(data.length);
+      nativeBytes.asTypedList(data.length).setAll(0, data);
+      final error = arena<native.PtyError>();
+      final result = bindings.pty_session_try_write(
+        handle,
+        requestId,
+        nativeBytes,
+        data.length,
+        error,
+      );
+      if (result == native.PtyTryWriteResult.PTY_WRITE_ERROR) {
+        throw PtyIoException('Writing to PTY failed',
+            nativeError: _readNativeError(error.ref));
+      }
+      return switch (result) {
+        native.PtyTryWriteResult.PTY_WRITE_ACCEPTED => PtyWriteResult.accepted,
+        native.PtyTryWriteResult.PTY_WRITE_BACKPRESSURED =>
+          PtyWriteResult.backpressured,
+        _ => PtyWriteResult.closed,
+      };
+    });
+  }
+}
+
+final class _FfiPtySession implements PtySession, Finalizable {
+  _FfiPtySession({
+    required this.handle,
+    required this.bindings,
+    required this.port,
+    required NativeFinalizer finalizer,
+  })  : _finalizer = finalizer,
+        _state = _FfiPtySessionState(
+          handle: handle,
+          bindings: bindings,
+        );
+
+  final Pointer<native.PtySession> handle;
+  final native.FlutterPtyBindings bindings;
+  final ReceivePort port;
+  final NativeFinalizer _finalizer;
+  final _FfiPtySessionState _state;
+  final _finalizerDetachToken = Object();
+  late final NativeEventPump _eventPump;
+  bool _closing = false;
+  bool _finalizerDetached = false;
+
+  @override
+  int get pid {
+    _ensureOpen();
+    return bindings.pty_session_pid(handle).toInt();
+  }
+
+  @override
+  PtyCapabilities get capabilities {
+    if (Platform.isWindows) {
+      return const PtyCapabilities(
+        posixSignals: false,
+        foregroundProcessGroups: false,
+        pixelDimensions: false,
+        reliableProcessTreeKill: true,
+        conPty: true,
+      );
+    }
+    return const PtyCapabilities(
+      posixSignals: true,
+      foregroundProcessGroups: true,
+      pixelDimensions: true,
+      reliableProcessTreeKill: false,
+      conPty: false,
+    );
+  }
+
+  @override
+  Stream<Uint8List> get output {
+    _state.output.setOwner(this);
+    return _state.output.stream;
+  }
+
+  @override
+  PtyInput get input {
+    _state.input.setOwner(this);
+    return _state.input;
+  }
+
+  @override
+  Future<PtyExit> get processExit =>
+      _state.processExit.then(_retainSessionUntilFutureCompletes);
+
+  @override
+  Future<PtyExit> get done =>
+      _state.done.then(_retainSessionUntilFutureCompletes);
+
+  void attach() {
+    _eventPump = NativeEventPump(port)..attach(_state);
+    _finalizer.attach(
+      this,
+      handle.cast(),
+      detach: _finalizerDetachToken,
+    );
+  }
+
+  Future<PtySession> waitForSpawn() async {
+    await _state.spawned;
+    return this;
+  }
+
+  PtyExit _retainSessionUntilFutureCompletes(PtyExit exit) => exit;
 
   @override
   void resize(PtySize size) {
@@ -341,43 +414,18 @@ final class _FfiPtySession
 
   @override
   Future<void> close() async {
-    if (_closing) return _closedCompleter.future;
+    if (_closing) return _state.closed;
     _closing = true;
-    _input.closeWithError(const PtyClosedException());
+    _state.input.closeWithError(const PtyClosedException());
     bindings.pty_session_begin_close(handle);
-    await _closedCompleter.future;
-    _output.closeAndDiscard();
+    await _state.closed;
+    _state.output.closeAndDiscard();
     if (!_finalizerDetached) {
       _finalizer.detach(_finalizerDetachToken);
       _finalizerDetached = true;
       bindings.pty_session_release(handle);
     }
     await _eventPump.close();
-  }
-
-  PtyWriteResult _tryWrite(int requestId, Uint8List data) {
-    return using((arena) {
-      final nativeBytes = arena<Uint8>(data.length);
-      nativeBytes.asTypedList(data.length).setAll(0, data);
-      final error = arena<native.PtyError>();
-      final result = bindings.pty_session_try_write(
-        handle,
-        requestId,
-        nativeBytes,
-        data.length,
-        error,
-      );
-      if (result == native.PtyTryWriteResult.PTY_WRITE_ERROR) {
-        throw PtyIoException('Writing to PTY failed',
-            nativeError: _readNativeError(error.ref));
-      }
-      return switch (result) {
-        native.PtyTryWriteResult.PTY_WRITE_ACCEPTED => PtyWriteResult.accepted,
-        native.PtyTryWriteResult.PTY_WRITE_BACKPRESSURED =>
-          PtyWriteResult.backpressured,
-        _ => PtyWriteResult.closed,
-      };
-    });
   }
 
   void _ensureOpen() {

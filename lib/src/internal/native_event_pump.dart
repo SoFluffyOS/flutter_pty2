@@ -32,12 +32,20 @@ final class NativeEventPump {
   }
 
   void _handleMessage(Object? message) {
+    final event = _parseEvent(message);
     final handler = _handler;
     if (handler == null) return;
+    if (event == null) return;
+    handler.handleNativeEvent(event);
+    if (event case NativeSessionClosed()) unawaited(close());
+  }
+
+  NativeEvent? _parseEvent(Object? message) {
     try {
-      handler.handleNativeEvent(NativeEvent.parse(message));
+      return NativeEvent.parse(message);
     } on FormatException catch (error) {
-      handler.handleProtocolError(error.message);
+      _handler?.handleProtocolError(error.message);
+      return null;
     }
   }
 }
