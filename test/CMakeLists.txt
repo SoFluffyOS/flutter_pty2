@@ -27,9 +27,15 @@ endfunction()
 
 if (WIN32)
   add_pty_native_test(
+    pty_windows_commandline_test
+    pty_windows_commandline_test.c
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_commandline.c"
+  )
+  add_pty_native_test(
     pty_windows_session_test
     pty_windows_session_test.c
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/flutter_pty.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_commandline.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_event.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_refcount.c"

@@ -13,6 +13,10 @@ add_library(flutter_pty2 SHARED
   "common/pty_write_queue.c"
 )
 
+if (WIN32)
+  target_sources(flutter_pty2 PRIVATE windows/pty_windows_commandline.c)
+endif()
+
 option(FLUTTER_PTY2_BUILD_TESTS "Build native flutter_pty2 tests" OFF)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")

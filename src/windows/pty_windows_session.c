@@ -11,6 +11,7 @@
 #include "../common/pty_error.h"
 #include "../common/pty_event.h"
 #include "../pty_internal.h"
+#include "pty_windows_commandline.h"
 
 #define PTY_WINDOWS_IO_BUFFER_SIZE (64 * 1024)
 
@@ -532,22 +533,9 @@ static int windows_create_process(const PtySpawnOptions *options,
     }
     attributes_initialized = 1;
 
-    char **command_arguments =
-        calloc((size_t)options->argument_count + 2, sizeof(*command_arguments));
-    if (command_arguments == NULL) {
-        pty_error_set(error,
-                      PTY_ERROR_DOMAIN_WIN32,
-                      PTY_ERROR_OUT_OF_MEMORY,
-                      ERROR_NOT_ENOUGH_MEMORY,
-                      "allocating Windows command arguments failed");
-        goto failure;
-    }
-    command_arguments[0] = (char *)options->executable;
-    for (int32_t index = 0; index < options->argument_count; index++) {
-        command_arguments[index + 1] = (char *)options->arguments[index];
-    }
-    command = build_command(NULL, command_arguments);
-    free(command_arguments);
+    command = pty_windows_build_command_line(options->executable,
+                                             options->arguments,
+                                             options->argument_count);
     environment = build_environment((char **)options->environment);
     working_directory = build_working_directory((char *)options->working_directory);
     if (command == NULL || environment == NULL ||
