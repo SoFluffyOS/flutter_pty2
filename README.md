@@ -164,7 +164,9 @@ The clean-slate API uses one Dart receive port per session and a native
 reference-counted session. Unix uses a poll-based reactor with bounded output
 credit and input writes; Windows uses ConPTY with dedicated reader, writer,
 waiter, and close workers. The finalizer only starts non-blocking native
-cleanup; deterministic callers should still await `close()`.
+cleanup; deterministic callers should still await `close()`. The detailed
+ownership and platform design is documented in
+[`doc/architecture.md`](doc/architecture.md).
 
 The legacy `Pty.start` API remains available from
 `package:flutter_pty2/flutter_pty.dart`. It is maintained for compatibility
