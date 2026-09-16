@@ -5,6 +5,7 @@
   asynchronous idempotent close.
 * Treat failed native event delivery as Dart endpoint abandonment and release
   the session owner exactly once.
+* Skip subsequent native event posts after a session has been abandoned.
 * Add native lifecycle, transfer, exit-drain, randomized race, finalizer, and
   platform resource-leak coverage, including scheduled 1 GiB transfers and
   10,000 randomized operations.

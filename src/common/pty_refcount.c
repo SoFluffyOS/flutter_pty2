@@ -71,6 +71,16 @@ int pty_session_mark_abandoned(PtySession *session)
 #endif
 }
 
+int pty_session_is_abandoned(PtySession *session)
+{
+    if (session == NULL) return 1;
+#if defined(_WIN32)
+    return InterlockedCompareExchange(&session->abandoned, 0, 0) != 0;
+#else
+    return atomic_load_explicit(&session->abandoned, memory_order_acquire) != 0;
+#endif
+}
+
 void pty_session_mark_closing(PtySession *session)
 {
     if (session == NULL) return;

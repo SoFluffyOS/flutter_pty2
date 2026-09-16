@@ -63,11 +63,16 @@ static PtyWindowsPlatform *windows_platform(PtySession *session)
     return session == NULL ? NULL : (PtyWindowsPlatform *)session->platform;
 }
 
-static int post_session_event(PtySession *session, int posted)
+static int handle_posted_session_event(PtySession *session, int posted)
 {
     if (!posted) pty_session_abandon(session);
     return posted;
 }
+
+#define post_session_event(session, event) \
+    (pty_session_is_abandoned(session) \
+         ? 0 \
+         : handle_posted_session_event((session), (event)))
 
 static char *windows_copy_string(const char *value)
 {

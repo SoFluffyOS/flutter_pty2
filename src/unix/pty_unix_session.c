@@ -63,11 +63,16 @@ static PtyUnixPlatform *platform_for(PtySession *session)
     return session == NULL ? NULL : (PtyUnixPlatform *)session->platform;
 }
 
-static int post_session_event(PtySession *session, int posted)
+static int handle_posted_session_event(PtySession *session, int posted)
 {
     if (!posted) pty_session_abandon(session);
     return posted;
 }
+
+#define post_session_event(session, event) \
+    (pty_session_is_abandoned(session) \
+         ? 0 \
+         : handle_posted_session_event((session), (event)))
 
 static int create_detached_worker(pthread_t *thread,
                                   void *(*worker)(void *),
