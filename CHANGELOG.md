@@ -8,6 +8,8 @@
   10,000 randomized operations.
 * Document clean-slate development commands, benchmarks, native architecture,
   ownership, shutdown, and platform boundaries.
+* Report host-process CPU time and normalized utilization for idle and loaded
+  concurrency benchmarks.
 * Align the minimum Flutter SDK constraint with the Dart 3 implementation.
 * Preserve buffered Unix output when a child exits during read backpressure.
 * Add Swift Package Manager support for iOS and macOS.

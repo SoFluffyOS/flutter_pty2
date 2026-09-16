@@ -9,17 +9,26 @@ const _loadedOutputBytes = 64 * 1024;
 Future<void> main() async {
   writeBenchmarkHeader();
   for (final count in benchmarkSessionCounts()) {
-    final idle = await runBenchmark(
+    final idle = await runBenchmarkWithCpu(
       'idle_concurrency',
       () => _runIdleCohort(count),
     );
-    writeBenchmark(idle, sessions: count);
+    writeBenchmark(
+      idle.summary,
+      sessions: count,
+      cpuUsage: idle.cpuUsage,
+    );
 
-    final loaded = await runBenchmark(
+    final loaded = await runBenchmarkWithCpu(
       'loaded_concurrency',
       () => _runLoadedCohort(count),
     );
-    writeBenchmark(loaded, bytes: _loadedOutputBytes, sessions: count);
+    writeBenchmark(
+      loaded.summary,
+      bytes: _loadedOutputBytes,
+      sessions: count,
+      cpuUsage: loaded.cpuUsage,
+    );
 
     await _reportLiveMemory(count);
   }

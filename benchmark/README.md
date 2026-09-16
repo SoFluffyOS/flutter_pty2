@@ -15,8 +15,10 @@ dart run benchmark/output.dart
 
 The scripts emit CSV rows with minimum, median, p95, and mean latency. Input
 and output benchmarks also report mean MiB/s. `concurrency.dart` exercises 1,
-10, 50, and 100 sessions and reports the current Dart process RSS after each
-cohort.
+10, 50, and 100 sessions, reports the current Dart process RSS after each
+cohort, and records current-process user/system CPU time and normalized CPU
+utilization for idle and loaded cohorts. CPU values cover the Dart/native host
+process; child-process CPU is not included.
 
 Use `PTY_BENCHMARK_ITERATIONS` and `PTY_BENCHMARK_WARMUPS` to control the
 sample count. The defaults are five measured samples and one warmup sample.

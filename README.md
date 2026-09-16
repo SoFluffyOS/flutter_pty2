@@ -146,8 +146,9 @@ git diff --exit-code -- lib/src/generated/flutter_pty_bindings_generated.dart
 ## Benchmarks
 
 The benchmark programs cover spawn and close latency, input and output
-throughput, interactive latency, concurrency, and live RSS. Build the native
-library and fixture first, then run a benchmark such as:
+throughput, interactive latency, idle/loaded concurrency, live RSS, and
+current-process CPU usage. Build the native library and fixture first, then
+run a benchmark such as:
 
 ```sh
 FLUTTER_PTY2_LIBRARY=/tmp/flutter_pty2-native/libflutter_pty2.dylib \

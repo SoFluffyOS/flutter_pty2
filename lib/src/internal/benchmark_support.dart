@@ -1,7 +1,9 @@
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter_pty2/flutter_pty2.dart';
 
 const benchmarkSizes = <int>[
@@ -122,9 +124,32 @@ Future<BenchmarkSummary> runBenchmark(
   return BenchmarkSummary(name, samples);
 }
 
+Future<BenchmarkRun> runBenchmarkWithCpu(
+  String name,
+  Future<Duration> Function() sample, {
+  int? iterations,
+}) async {
+  final before = readCurrentProcessCpuTime();
+  final stopwatch = Stopwatch()..start();
+  final summary = await runBenchmark(name, sample, iterations: iterations);
+  stopwatch.stop();
+  final after = readCurrentProcessCpuTime();
+  final cpuUsage = switch ((before, after)) {
+    (final before?, final after?) => BenchmarkCpuUsage(
+        userMicroseconds: after.userMicroseconds - before.userMicroseconds,
+        systemMicroseconds:
+            after.systemMicroseconds - before.systemMicroseconds,
+        wallMicroseconds: stopwatch.elapsedMicroseconds,
+      ),
+    _ => null,
+  };
+  return BenchmarkRun(summary, cpuUsage);
+}
+
 void writeBenchmarkHeader() {
   stdout.writeln(
-    'name,bytes,sessions,min_us,p50_us,p95_us,mean_us,mean_mib_per_sec',
+    'name,bytes,sessions,min_us,p50_us,p95_us,mean_us,mean_mib_per_sec,'
+    'cpu_user_us,cpu_system_us,cpu_total_us,cpu_util_percent',
   );
 }
 
@@ -132,6 +157,7 @@ void writeBenchmark(
   BenchmarkSummary summary, {
   int? bytes,
   int? sessions,
+  BenchmarkCpuUsage? cpuUsage,
 }) {
   final columns = <String>[summary.name];
   switch (bytes) {
@@ -156,7 +182,93 @@ void writeBenchmark(
       null => '',
     },
   ]);
+  switch (cpuUsage) {
+    case final usage?:
+      columns.addAll([
+        '${usage.userMicroseconds}',
+        '${usage.systemMicroseconds}',
+        '${usage.totalMicroseconds}',
+        usage.utilizationPercent.toStringAsFixed(2),
+      ]);
+    case null:
+      columns.addAll(['', '', '', '']);
+  }
   stdout.writeln(columns.join(','));
+}
+
+BenchmarkCpuTime? readCurrentProcessCpuTime() {
+  if (Platform.isWindows) return _readWindowsCpuTime();
+  return _readPosixCpuTime();
+}
+
+BenchmarkCpuTime? _readPosixCpuTime() {
+  final pointer = calloc<Uint8>(256);
+  try {
+    final getrusage = DynamicLibrary.process().lookupFunction<
+        Int32 Function(Int32, Pointer<Uint8>),
+        int Function(int, Pointer<Uint8>)>('getrusage');
+    if (getrusage(0, pointer) != 0) return null;
+    final values = pointer.cast<Int64>();
+    return BenchmarkCpuTime(
+      userMicroseconds: _timevalMicroseconds(values[0], values[1]),
+      systemMicroseconds: _timevalMicroseconds(values[2], values[3]),
+    );
+  } on Object {
+    return null;
+  } finally {
+    calloc.free(pointer);
+  }
+}
+
+BenchmarkCpuTime? _readWindowsCpuTime() {
+  try {
+    final library = DynamicLibrary.open('kernel32.dll');
+    final getCurrentProcess = library.lookupFunction<Pointer<Void> Function(),
+        Pointer<Void> Function()>('GetCurrentProcess');
+    final getProcessTimes = library.lookupFunction<
+        Int32 Function(
+          Pointer<Void>,
+          Pointer<Uint32>,
+          Pointer<Uint32>,
+          Pointer<Uint32>,
+          Pointer<Uint32>,
+        ),
+        int Function(
+          Pointer<Void>,
+          Pointer<Uint32>,
+          Pointer<Uint32>,
+          Pointer<Uint32>,
+          Pointer<Uint32>,
+        )>('GetProcessTimes');
+    final fileTimes = calloc<Uint32>(8);
+    try {
+      final ok = getProcessTimes(
+        getCurrentProcess(),
+        fileTimes,
+        fileTimes + 2,
+        fileTimes + 4,
+        fileTimes + 6,
+      );
+      if (ok == 0) return null;
+      return BenchmarkCpuTime(
+        userMicroseconds: _filetimeMicroseconds(fileTimes + 6),
+        systemMicroseconds: _filetimeMicroseconds(fileTimes + 4),
+      );
+    } finally {
+      calloc.free(fileTimes);
+    }
+  } on Object {
+    return null;
+  }
+}
+
+int _timevalMicroseconds(int seconds, int microseconds) {
+  return seconds * Duration.microsecondsPerSecond + microseconds;
+}
+
+int _filetimeMicroseconds(Pointer<Uint32> fileTime) {
+  final ticks = (fileTime[1] << 32) | fileTime[0];
+  return ticks ~/ 10;
 }
 
 double meanMiBPerSecond(BenchmarkSummary summary, int bytes) {
@@ -200,5 +312,41 @@ final class BenchmarkSummary {
       ..sort((first, second) => first.compareTo(second));
     final index = ((sorted.length - 1) * percentile / 100).round();
     return sorted[index];
+  }
+}
+
+final class BenchmarkRun {
+  const BenchmarkRun(this.summary, this.cpuUsage);
+
+  final BenchmarkSummary summary;
+  final BenchmarkCpuUsage? cpuUsage;
+}
+
+final class BenchmarkCpuTime {
+  const BenchmarkCpuTime({
+    required this.userMicroseconds,
+    required this.systemMicroseconds,
+  });
+
+  final int userMicroseconds;
+  final int systemMicroseconds;
+}
+
+final class BenchmarkCpuUsage {
+  const BenchmarkCpuUsage({
+    required this.userMicroseconds,
+    required this.systemMicroseconds,
+    required this.wallMicroseconds,
+  });
+
+  final int userMicroseconds;
+  final int systemMicroseconds;
+  final int wallMicroseconds;
+
+  int get totalMicroseconds => userMicroseconds + systemMicroseconds;
+
+  double get utilizationPercent {
+    final processors = math.max(Platform.numberOfProcessors, 1);
+    return totalMicroseconds * 100 / wallMicroseconds / processors;
   }
 }
