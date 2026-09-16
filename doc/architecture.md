@@ -42,6 +42,11 @@ abandon entry point. Abandonment marks the session, requests asynchronous
 shutdown, and releases Dart's reference; it does not join workers or wait for
 a process.
 
+Every native event post checks its success result. A failed post means the Dart
+endpoint is gone, so native code enters the same abandonment path. Abandonment
+is idempotent: a failed event post and the later `NativeFinalizer` callback can
+race without releasing the Dart-owned reference twice.
+
 Explicit `close()` follows this sequence:
 
 ```text
