@@ -1,3 +1,4 @@
+export 'benchmark_support.dart';
 export 'ffi_driver.dart';
 export 'input_flow_controller.dart';
 export 'native_event.dart';
