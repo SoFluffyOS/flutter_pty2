@@ -419,6 +419,45 @@ static void stop_process(PtyUnixPlatform *platform)
     pthread_mutex_unlock(&platform->mutex);
 }
 
+static void post_startup_cancelled(PtySession *session)
+{
+    PtyError error;
+    pty_error_set(&error,
+                  PTY_ERROR_DOMAIN_INTERNAL,
+                  PTY_ERROR_CLOSED,
+                  EPIPE,
+                  "PTY session closed during startup");
+    pty_post_spawn_failed(session->event_port, &error);
+}
+
+static void finish_unstarted_close(PtySession *session)
+{
+    PtyUnixPlatform *platform = platform_for(session);
+    if (platform == NULL) return;
+
+    stop_process(platform);
+
+    pthread_mutex_lock(&platform->mutex);
+    const int master_fd = platform->master_fd;
+    platform->master_fd = -1;
+    platform->stopping = 1;
+    platform->reactor_done = 1;
+    platform->waiter_done = 1;
+    platform->close_done = 1;
+    platform->output_closed = 1;
+    platform->session_closed_posted = 1;
+    pthread_mutex_unlock(&platform->mutex);
+
+    if (master_fd >= 0) close(master_fd);
+    while (waitpid(platform->process_id, NULL, 0) < 0 && errno == EINTR) {}
+
+    post_startup_cancelled(session);
+    atomic_store_explicit(&session->output_closed, 1, memory_order_release);
+    pty_session_mark_closed(session);
+    pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED);
+    pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
+}
+
 static void *close_worker(void *argument)
 {
     PtySession *session = argument;
@@ -450,8 +489,9 @@ static void *bootstrap_worker(void *argument)
                         &error)) {
         pty_post_spawn_failed(session->event_port, &error);
         pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED);
-        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
         pty_session_mark_closing(session);
+        pty_session_mark_closed(session);
+        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
         pty_unix_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
@@ -482,8 +522,9 @@ static void *bootstrap_worker(void *argument)
         pty_error_set_errno(&error, PTY_ERROR_OUT_OF_MEMORY, error_number,
                             "allocating Unix PTY session failed");
         pty_post_spawn_failed(session->event_port, &error);
-        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
         pty_session_mark_closing(session);
+        pty_session_mark_closed(session);
+        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
         pty_unix_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
@@ -502,11 +543,7 @@ static void *bootstrap_worker(void *argument)
                             PTY_LIFECYCLE_CLOSING;
     pthread_mutex_unlock(&platform->mutex);
     if (closing) {
-        stop_process(platform);
-        close(platform->master_fd);
-        platform->master_fd = -1;
-        while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
-        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
+        finish_unstarted_close(session);
         pty_unix_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
@@ -528,6 +565,8 @@ static void *bootstrap_worker(void *argument)
                             "starting PTY reactor failed");
         pty_post_spawn_failed(session->event_port, &error);
         pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED);
+        pty_session_mark_closing(session);
+        pty_session_mark_closed(session);
         pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
         pty_unix_free_options(&bootstrap->options);
         free(bootstrap);
@@ -546,13 +585,16 @@ static void *bootstrap_worker(void *argument)
         pthread_mutex_lock(&platform->mutex);
         platform->stopping = 1;
         platform->waiter_done = 1;
+        platform->close_done = 1;
         pthread_mutex_unlock(&platform->mutex);
         stop_process(platform);
         wake_reactor(platform);
         while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
         pty_error_set_errno(&error, PTY_ERROR_INTERNAL, waiter_result,
                             "starting PTY waiter failed");
+        pty_session_mark_closing(session);
         pty_post_spawn_failed(session->event_port, &error);
+        maybe_post_session_closed(session);
         pty_unix_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
@@ -567,9 +609,12 @@ static void *bootstrap_worker(void *argument)
                                                  memory_order_acquire)) {
         pthread_mutex_lock(&platform->mutex);
         platform->stopping = 1;
+        platform->close_done = 1;
         pthread_mutex_unlock(&platform->mutex);
         stop_process(platform);
         wake_reactor(platform);
+        post_startup_cancelled(session);
+        maybe_post_session_closed(session);
         pty_unix_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
