@@ -45,13 +45,20 @@ jobs:
         run: sudo apt-get install -y ninja-build libgtk-3-dev
 
       - name: Build native library
-        run: cmake -S src -B build -DCMAKE_BUILD_TYPE=Release -DFLUTTER_PTY2_BUILD_TESTS=ON && cmake --build build --parallel 4
-
-      - name: Run native tests
-        run: ctest --test-dir build --output-on-failure
+        run: >-
+          cmake -S src -B build -DCMAKE_BUILD_TYPE=Release
+          -DFLUTTER_PTY2_BUILD_TESTS=ON
+          && cmake --build build --config Release --parallel 4
 
       - name: Build integration fixture
-        run: cmake -S test/fixtures/pty_test_child -B build/pty_test_child && cmake --build build/pty_test_child --parallel 4
+        run: >-
+          cmake -S test/fixtures/pty_test_child -B build/pty_test_child
+          && cmake --build build/pty_test_child --config Release --parallel 4
+
+      - name: Run native tests
+        env:
+          PTY_TEST_CHILD_WINDOWS: ${{ github.workspace }}/build/pty_test_child/Release/pty_test_child.exe
+        run: ctest --test-dir build --output-on-failure
 
       - name: Run tests
         run: flutter test
