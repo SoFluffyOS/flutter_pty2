@@ -190,7 +190,7 @@ final class _FfiPtySession
       return const PtyCapabilities(
         posixSignals: false,
         foregroundProcessGroups: false,
-        pixelDimensions: true,
+        pixelDimensions: false,
         reliableProcessTreeKill: true,
         conPty: true,
       );

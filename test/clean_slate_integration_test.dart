@@ -52,6 +52,29 @@ void main() {
   );
 
   test(
+    'reports Unix PTY capabilities accurately',
+    () async {
+      final session = await Pty.spawn(
+        const PtySpawnOptions(
+          executable: '/bin/sh',
+          arguments: ['-c', 'exit 0'],
+        ),
+      );
+      final exit = await session.done;
+      await session.close();
+      final capabilities = session.capabilities;
+
+      expect(exit, isA<PtyExitCode>());
+      expect(capabilities.posixSignals, isTrue);
+      expect(capabilities.foregroundProcessGroups, isTrue);
+      expect(capabilities.pixelDimensions, isTrue);
+      expect(capabilities.reliableProcessTreeKill, isFalse);
+      expect(capabilities.conPty, isFalse);
+    },
+    skip: nativeSkipReason,
+  );
+
+  test(
     'pausing output applies bounded native credit and resumes in order',
     () async {
       final child = fixture;
