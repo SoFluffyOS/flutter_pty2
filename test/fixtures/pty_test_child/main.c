@@ -272,6 +272,11 @@ int main(int argc, char **argv)
         write_pattern(parse_count(argv[2]), 0);
         return 0;
     }
+    if (strcmp(argv[1], "delayed-flood") == 0 && argc == 4) {
+        sleep_milliseconds(parse_delay(argv[2]));
+        write_pattern(parse_count(argv[3]), 0);
+        return 0;
+    }
     if (strcmp(argv[1], "slow-output") == 0 && argc == 4) {
         write_pattern(parse_count(argv[2]), parse_delay(argv[3]));
         return 0;

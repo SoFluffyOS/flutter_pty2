@@ -58,6 +58,7 @@ typedef struct PtyWindowsPlatform {
     int close_done;
     int stopping;
     int write_backpressured;
+    int discard_output;
     int output_closed;
     int input_closed;
     int session_closed_posted;
@@ -288,16 +289,20 @@ static DWORD WINAPI windows_reader(void *argument)
     uint8_t buffer[PTY_WINDOWS_IO_BUFFER_SIZE];
     while (true) {
         EnterCriticalSection(&platform->mutex);
-        while (session->output_credit == 0 && !platform->stopping) {
+        while (session->output_credit == 0 && !platform->discard_output &&
+               !platform->stopping) {
             SleepConditionVariableCS(&platform->condition,
                                      &platform->mutex,
                                      INFINITE);
         }
         const int stopping = platform->stopping;
-        const DWORD capacity = (DWORD)(session->output_credit <
-                                               sizeof(buffer)
-                                           ? session->output_credit
-                                           : sizeof(buffer));
+        const int discard = platform->discard_output;
+        const DWORD capacity = discard
+                                   ? sizeof(buffer)
+                                   : (DWORD)(session->output_credit <
+                                                 sizeof(buffer)
+                                             ? session->output_credit
+                                             : sizeof(buffer));
         LeaveCriticalSection(&platform->mutex);
         if (stopping) break;
 
@@ -321,12 +326,16 @@ static DWORD WINAPI windows_reader(void *argument)
         }
 
         EnterCriticalSection(&platform->mutex);
-        if (session->output_credit >= length) {
-            session->output_credit -= length;
-        } else {
-            session->output_credit = 0;
+        const int discard_after_read = platform->discard_output;
+        if (!discard_after_read) {
+            if (session->output_credit >= length) {
+                session->output_credit -= length;
+            } else {
+                session->output_credit = 0;
+            }
         }
         LeaveCriticalSection(&platform->mutex);
+        if (discard_after_read) continue;
         if (!post_session_event(
                 session,
                 pty_post_output(session->event_port, buffer, length))) {
@@ -1170,6 +1179,7 @@ FFI_PLUGIN_EXPORT void pty_session_discard_output(PtySession *session)
     PtyWindowsPlatform *platform = windows_platform(session);
     if (platform == NULL) return;
     EnterCriticalSection(&platform->mutex);
+    platform->discard_output = 1;
     session->output_credit = session->output_window_limit;
     WakeAllConditionVariable(&platform->condition);
     LeaveCriticalSection(&platform->mutex);
