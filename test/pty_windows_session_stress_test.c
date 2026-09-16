@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <windows.h>
+#include <tlhelp32.h>
 
 #include "../src/flutter_pty.h"
 #include "../src/include/dart_api_dl.h"
@@ -106,12 +107,51 @@ static DWORD process_handle_count(void)
     return count;
 }
 
+static DWORD process_thread_count(DWORD process_id)
+{
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    assert(snapshot != INVALID_HANDLE_VALUE);
+
+    THREADENTRY32 entry;
+    entry.dwSize = sizeof(entry);
+    DWORD count = 0;
+    BOOL has_entry = Thread32First(snapshot, &entry);
+    while (has_entry) {
+        if (entry.th32OwnerProcessID == process_id) count++;
+        has_entry = Thread32Next(snapshot, &entry);
+    }
+    assert(GetLastError() == ERROR_NO_MORE_FILES);
+    CloseHandle(snapshot);
+    return count;
+}
+
+static DWORD child_process_count(DWORD parent_process_id)
+{
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    assert(snapshot != INVALID_HANDLE_VALUE);
+
+    PROCESSENTRY32 entry;
+    entry.dwSize = sizeof(entry);
+    DWORD count = 0;
+    BOOL has_entry = Process32First(snapshot, &entry);
+    while (has_entry) {
+        if (entry.th32ParentProcessID == parent_process_id) count++;
+        has_entry = Process32Next(snapshot, &entry);
+    }
+    assert(GetLastError() == ERROR_NO_MORE_FILES);
+    CloseHandle(snapshot);
+    return count;
+}
+
 int main(void)
 {
     InitializeCriticalSection(&events.mutex);
     InitializeConditionVariable(&events.condition);
     Dart_PostCObject_DL = post_object;
     const DWORD baseline_handle_count = process_handle_count();
+    const DWORD current_process_id = GetCurrentProcessId();
+    const DWORD baseline_thread_count = process_thread_count(current_process_id);
+    const DWORD baseline_child_count = child_process_count(current_process_id);
 
     int cycle_count = 1000;
     const char *configured_cycle_count = getenv("PTY_WINDOWS_STRESS_CYCLES");
@@ -161,6 +201,8 @@ int main(void)
     assert(stats.pending_write_chunks == 0);
     assert(stats.pending_write_bytes == 0);
     assert(process_handle_count() == baseline_handle_count);
+    assert(process_thread_count(current_process_id) == baseline_thread_count);
+    assert(child_process_count(current_process_id) == baseline_child_count);
     DeleteCriticalSection(&events.mutex);
     return 0;
 }
