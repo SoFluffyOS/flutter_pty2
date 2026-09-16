@@ -303,4 +303,31 @@ void main() {
     },
     skip: nativeSkipReason,
   );
+
+  test(
+    'fails a pending write when the session closes',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['slow-copy-input', '4194304', '10'],
+          inputBufferBytes: 64 * 1024,
+        ),
+      );
+      final outputSubscription = session.output.listen((_) {});
+      final writeFuture = session.input.write(Uint8List(4 * 1024 * 1024));
+      final writeExpectation = expectLater(
+        writeFuture,
+        throwsA(isA<PtyException>()),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await session.close();
+      await outputSubscription.cancel();
+
+      await writeExpectation;
+    },
+    skip: skipReason,
+  );
 }
