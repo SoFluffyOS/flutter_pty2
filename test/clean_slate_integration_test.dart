@@ -294,6 +294,23 @@ void main() {
   );
 
   test(
+    'reports a typed error for an executable without execute permission',
+    () async {
+      await expectLater(
+        Pty.spawn(const PtySpawnOptions(executable: '/')),
+        throwsA(
+          isA<PtySpawnException>().having(
+            (exception) => exception.nativeError?.kind,
+            'native error kind',
+            PtyErrorKind.permissionDenied,
+          ),
+        ),
+      );
+    },
+    skip: nativeSkipReason,
+  );
+
+  test(
     'reports a typed error for an invalid working directory',
     () async {
       await expectLater(
