@@ -128,6 +128,10 @@ final class FfiPtyDriver {
 }
 
 DynamicLibrary _openLibrary() {
+  final override = Platform.environment['FLUTTER_PTY2_LIBRARY'];
+  if (override case final path? when path.isNotEmpty) {
+    return DynamicLibrary.open(path);
+  }
   if (Platform.isMacOS || Platform.isIOS) return DynamicLibrary.process();
   if (Platform.isLinux || Platform.isAndroid) {
     return DynamicLibrary.open('libflutter_pty2.so');

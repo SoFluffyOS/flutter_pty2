@@ -156,10 +156,15 @@ static void mark_input_closed(PtySession *session, const PtyError *error)
     if (!should_post) return;
     atomic_store_explicit(&session->input_closed, 1, memory_order_release);
     if (error == NULL) {
-        pty_post_simple_event(session->event_port, PTY_EVENT_INPUT_CLOSED);
-    } else {
-        pty_post_input_closed(session->event_port, error);
+        PtyError closed_error;
+        pty_error_set_errno(&closed_error,
+                            PTY_ERROR_CLOSED,
+                            EPIPE,
+                            "PTY input closed");
+        pty_post_input_closed(session->event_port, &closed_error);
+        return;
     }
+    pty_post_input_closed(session->event_port, error);
 }
 
 static int pty_unix_flush_write_queue(PtySession *session)

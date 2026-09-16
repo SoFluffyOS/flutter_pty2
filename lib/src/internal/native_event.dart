@@ -89,10 +89,16 @@ final class NativeSessionClosed extends NativeEvent {
 
 int _readInt(List<Object?> message, int index) {
   if (index >= message.length) {
-    throw FormatException('Native event field $index must be an integer');
+    throw FormatException(
+      'Native event field $index is missing from ${message.length}-field '
+      'event (${message.toString()})',
+    );
   }
   if (message[index] case final int value) return value;
-  throw FormatException('Native event field $index must be an integer');
+  throw FormatException(
+    'Native event field $index must be an integer; '
+    'got ${message[index].runtimeType} (${message[index]})',
+  );
 }
 
 Uint8List _readBytes(List<Object?> message, int index) {

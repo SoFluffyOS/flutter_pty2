@@ -218,10 +218,16 @@ static void windows_mark_input_closed(PtySession *session,
     if (!should_post) return;
     InterlockedExchange(&session->input_closed, 1);
     if (error == NULL) {
-        pty_post_simple_event(session->event_port, PTY_EVENT_INPUT_CLOSED);
-    } else {
-        pty_post_input_closed(session->event_port, error);
+        PtyError closed_error;
+        pty_error_set(&closed_error,
+                      PTY_ERROR_DOMAIN_WIN32,
+                      PTY_ERROR_CLOSED,
+                      ERROR_BROKEN_PIPE,
+                      "PTY input closed");
+        pty_post_input_closed(session->event_port, &closed_error);
+        return;
     }
+    pty_post_input_closed(session->event_port, error);
 }
 
 static void windows_maybe_post_closed(PtySession *session)
