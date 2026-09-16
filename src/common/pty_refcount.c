@@ -59,13 +59,15 @@ FFI_PLUGIN_EXPORT void pty_session_release(PtySession *session)
     free(session);
 }
 
-void pty_session_mark_abandoned(PtySession *session)
+int pty_session_mark_abandoned(PtySession *session)
 {
-    if (session == NULL) return;
+    if (session == NULL) return 0;
 #if defined(_WIN32)
-    InterlockedExchange(&session->abandoned, 1);
+    return InterlockedExchange(&session->abandoned, 1) == 0;
 #else
-    atomic_store_explicit(&session->abandoned, 1, memory_order_release);
+    return atomic_exchange_explicit(&session->abandoned,
+                                    1,
+                                    memory_order_acq_rel) == 0;
 #endif
 }
 

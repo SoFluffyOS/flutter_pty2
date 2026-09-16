@@ -63,6 +63,18 @@ if (WIN32)
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_debug_stats.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_write_queue.c"
   )
+  add_pty_native_test(
+    pty_event_failure_test
+    pty_event_failure_test.c
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/flutter_pty.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_commandline.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_environment.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_event.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_refcount.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_debug_stats.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_write_queue.c"
+  )
 else()
   add_pty_native_test(
     pty_write_queue_test
@@ -95,4 +107,5 @@ else()
   add_pty_native_test(pty_unix_concurrent_spawn_test pty_unix_concurrent_spawn_test.c ${PTY_SESSION_SOURCES})
   add_pty_native_test(pty_unix_startup_close_test pty_unix_startup_close_test.c ${PTY_SESSION_SOURCES})
   add_pty_native_test(pty_unix_session_stress_test pty_unix_session_stress_test.c ${PTY_SESSION_SOURCES})
+  add_pty_native_test(pty_event_failure_test pty_event_failure_test.c ${PTY_SESSION_SOURCES})
 endif()

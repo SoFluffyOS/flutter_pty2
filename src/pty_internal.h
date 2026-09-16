@@ -54,7 +54,7 @@ struct PtySession {
 void pty_session_init(PtySession *session);
 void pty_session_retain(PtySession *session);
 void pty_session_release(PtySession *session);
-void pty_session_mark_abandoned(PtySession *session);
+int pty_session_mark_abandoned(PtySession *session);
 void pty_session_mark_closing(PtySession *session);
 void pty_session_mark_closed(PtySession *session);
 

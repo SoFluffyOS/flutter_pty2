@@ -63,6 +63,12 @@ static PtyUnixPlatform *platform_for(PtySession *session)
     return session == NULL ? NULL : (PtyUnixPlatform *)session->platform;
 }
 
+static int post_session_event(PtySession *session, int posted)
+{
+    if (!posted) pty_session_abandon(session);
+    return posted;
+}
+
 static int create_detached_worker(pthread_t *thread,
                                   void *(*worker)(void *),
                                   void *argument)
@@ -130,9 +136,7 @@ static void post_child_error(PtySession *session,
 {
     PtyError error;
     pty_error_set_errno(&error, kind, error_number, operation);
-    if (!pty_post_error(session->event_port, &error)) {
-        pty_session_mark_closing(session);
-    }
+    post_session_event(session, pty_post_error(session->event_port, &error));
 }
 
 static void maybe_post_session_closed(PtySession *session)
@@ -150,7 +154,9 @@ static void maybe_post_session_closed(PtySession *session)
     pthread_mutex_unlock(&platform->mutex);
     if (!should_post) return;
     pty_session_mark_closed(session);
-    pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
+    post_session_event(
+        session,
+        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED));
 }
 
 static void mark_output_closed(PtySession *session)
@@ -166,7 +172,9 @@ static void mark_output_closed(PtySession *session)
     pthread_mutex_unlock(&platform->mutex);
     if (!should_post) return;
     atomic_store_explicit(&session->output_closed, 1, memory_order_release);
-    pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED);
+    post_session_event(
+        session,
+        pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED));
 }
 
 static void mark_input_closed(PtySession *session, const PtyError *error)
@@ -188,10 +196,13 @@ static void mark_input_closed(PtySession *session, const PtyError *error)
                             PTY_ERROR_CLOSED,
                             EPIPE,
                             "PTY input closed");
-        pty_post_input_closed(session->event_port, &closed_error);
+        post_session_event(
+            session,
+            pty_post_input_closed(session->event_port, &closed_error));
         return;
     }
-    pty_post_input_closed(session->event_port, error);
+    post_session_event(session,
+                       pty_post_input_closed(session->event_port, error));
 }
 
 static void discard_pending_writes(PtyUnixPlatform *platform)
@@ -251,7 +262,9 @@ static int pty_unix_flush_write_queue(PtySession *session)
             mark_input_closed(session, &error);
             return 0;
         }
-        pty_post_write_complete(session->event_port, chunk->request_id);
+        post_session_event(
+            session,
+            pty_post_write_complete(session->event_port, chunk->request_id));
         int should_post_writable = 0;
         pthread_mutex_lock(&platform->mutex);
         if (platform->write_backpressured &&
@@ -262,7 +275,9 @@ static int pty_unix_flush_write_queue(PtySession *session)
         }
         pthread_mutex_unlock(&platform->mutex);
         if (should_post_writable) {
-            pty_post_simple_event(session->event_port, PTY_EVENT_WRITABLE);
+            post_session_event(
+                session,
+                pty_post_simple_event(session->event_port, PTY_EVENT_WRITABLE));
         }
         pty_write_chunk_free(chunk);
     }
@@ -305,10 +320,13 @@ static int read_output(PtySession *session)
                 session->output_credit = 0;
             }
             pthread_mutex_unlock(&platform->mutex);
-            if (!pty_post_output(session->event_port, buffer, result)) {
+            if (!post_session_event(
+                    session,
+                    pty_post_output(session->event_port, buffer, result))) {
                 pthread_mutex_lock(&platform->mutex);
                 platform->discard_output = 1;
                 pthread_mutex_unlock(&platform->mutex);
+                return PTY_READ_CLOSED;
             }
         }
         return PTY_READ_DATA;
@@ -436,9 +454,17 @@ static void *waiter_worker(void *argument)
         atomic_store_explicit(&session->process_exited, 1, memory_order_release);
         wake_reactor(platform);
         if (WIFEXITED(status)) {
-            pty_post_process_exit(session->event_port, false, WEXITSTATUS(status));
+            post_session_event(
+                session,
+                pty_post_process_exit(session->event_port,
+                                      false,
+                                      WEXITSTATUS(status)));
         } else if (WIFSIGNALED(status)) {
-            pty_post_process_exit(session->event_port, true, WTERMSIG(status));
+            post_session_event(
+                session,
+                pty_post_process_exit(session->event_port,
+                                      true,
+                                      WTERMSIG(status)));
         }
     } else if (result < 0) {
         post_child_error(session, PTY_ERROR_IO, errno, "waiting for PTY process failed");
@@ -508,7 +534,8 @@ static void post_startup_cancelled(PtySession *session)
                   PTY_ERROR_CLOSED,
                   EPIPE,
                   "PTY session closed during startup");
-    pty_post_spawn_failed(session->event_port, &error);
+    post_session_event(session,
+                       pty_post_spawn_failed(session->event_port, &error));
 }
 
 static void finish_unstarted_close(PtySession *session)
@@ -538,8 +565,12 @@ static void finish_unstarted_close(PtySession *session)
     post_startup_cancelled(session);
     atomic_store_explicit(&session->output_closed, 1, memory_order_release);
     pty_session_mark_closed(session);
-    pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED);
-    pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
+    post_session_event(
+        session,
+        pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED));
+    post_session_event(
+        session,
+        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED));
 }
 
 static void *close_worker(void *argument)
@@ -573,11 +604,17 @@ static void *bootstrap_worker(void *argument)
                         &slave_fd,
                         &process_id,
                         &error)) {
-        pty_post_spawn_failed(session->event_port, &error);
-        pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED);
+        post_session_event(
+            session,
+            pty_post_spawn_failed(session->event_port, &error));
+        post_session_event(
+            session,
+            pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED));
         pty_session_mark_closing(session);
         pty_session_mark_closed(session);
-        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
+        post_session_event(
+            session,
+            pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED));
         pty_unix_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
@@ -617,10 +654,13 @@ static void *bootstrap_worker(void *argument)
         while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
         pty_error_set_errno(&error, PTY_ERROR_OUT_OF_MEMORY, error_number,
                             "allocating Unix PTY session failed");
-        pty_post_spawn_failed(session->event_port, &error);
+        post_session_event(session,
+                           pty_post_spawn_failed(session->event_port, &error));
         pty_session_mark_closing(session);
         pty_session_mark_closed(session);
-        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
+        post_session_event(
+            session,
+            pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED));
         pty_unix_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
@@ -660,11 +700,17 @@ static void *bootstrap_worker(void *argument)
         discard_unix_platform(session);
         pty_error_set_errno(&error, PTY_ERROR_INTERNAL, reactor_result,
                             "starting PTY reactor failed");
-        pty_post_spawn_failed(session->event_port, &error);
-        pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED);
+        post_session_event(
+            session,
+            pty_post_spawn_failed(session->event_port, &error));
+        post_session_event(
+            session,
+            pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED));
         pty_session_mark_closing(session);
         pty_session_mark_closed(session);
-        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
+        post_session_event(
+            session,
+            pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED));
         pty_unix_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
@@ -690,7 +736,8 @@ static void *bootstrap_worker(void *argument)
         pty_error_set_errno(&error, PTY_ERROR_INTERNAL, waiter_result,
                             "starting PTY waiter failed");
         pty_session_mark_closing(session);
-        pty_post_spawn_failed(session->event_port, &error);
+        post_session_event(session,
+                           pty_post_spawn_failed(session->event_port, &error));
         maybe_post_session_closed(session);
         pty_unix_free_options(&bootstrap->options);
         free(bootstrap);
@@ -717,12 +764,14 @@ static void *bootstrap_worker(void *argument)
         pty_session_release(session);
         return NULL;
     }
-    pty_post_spawned(
-        session->event_port,
-        process_id,
-        PTY_CAPABILITY_POSIX_SIGNALS |
-            PTY_CAPABILITY_FOREGROUND_PROCESS_GROUPS |
-            PTY_CAPABILITY_PIXEL_DIMENSIONS);
+    post_session_event(
+        session,
+        pty_post_spawned(
+            session->event_port,
+            process_id,
+            PTY_CAPABILITY_POSIX_SIGNALS |
+                PTY_CAPABILITY_FOREGROUND_PROCESS_GROUPS |
+                PTY_CAPABILITY_PIXEL_DIMENSIONS));
     pty_unix_free_options(&bootstrap->options);
     free(bootstrap);
     pty_session_release(session);
@@ -1015,8 +1064,7 @@ FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
 FFI_PLUGIN_EXPORT void pty_session_abandon(void *opaque_session)
 {
     PtySession *session = opaque_session;
-    if (session == NULL) return;
-    pty_session_mark_abandoned(session);
+    if (session == NULL || !pty_session_mark_abandoned(session)) return;
     pty_session_begin_close(session);
     pty_session_release(session);
 }

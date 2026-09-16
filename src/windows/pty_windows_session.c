@@ -63,6 +63,12 @@ static PtyWindowsPlatform *windows_platform(PtySession *session)
     return session == NULL ? NULL : (PtyWindowsPlatform *)session->platform;
 }
 
+static int post_session_event(PtySession *session, int posted)
+{
+    if (!posted) pty_session_abandon(session);
+    return posted;
+}
+
 static char *windows_copy_string(const char *value)
 {
     if (value == NULL) return NULL;
@@ -190,7 +196,7 @@ static void windows_post_error(PtySession *session,
                   kind,
                   error_code,
                   operation);
-    pty_post_error(session->event_port, &error);
+    post_session_event(session, pty_post_error(session->event_port, &error));
 }
 
 static void windows_mark_output_closed(PtySession *session)
@@ -205,7 +211,9 @@ static void windows_mark_output_closed(PtySession *session)
     LeaveCriticalSection(&platform->mutex);
     if (should_post) {
         InterlockedExchange(&session->output_closed, 1);
-        pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED);
+        post_session_event(
+            session,
+            pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED));
     }
 }
 
@@ -229,10 +237,13 @@ static void windows_mark_input_closed(PtySession *session,
                       PTY_ERROR_CLOSED,
                       ERROR_BROKEN_PIPE,
                       "PTY input closed");
-        pty_post_input_closed(session->event_port, &closed_error);
+        post_session_event(
+            session,
+            pty_post_input_closed(session->event_port, &closed_error));
         return;
     }
-    pty_post_input_closed(session->event_port, error);
+    post_session_event(session,
+                       pty_post_input_closed(session->event_port, error));
 }
 
 static void windows_maybe_post_closed(PtySession *session)
@@ -249,7 +260,9 @@ static void windows_maybe_post_closed(PtySession *session)
     LeaveCriticalSection(&platform->mutex);
     if (!should_post) return;
     pty_session_mark_closed(session);
-    pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
+    post_session_event(
+        session,
+        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED));
 }
 
 static DWORD WINAPI windows_reader(void *argument)
@@ -298,7 +311,11 @@ static DWORD WINAPI windows_reader(void *argument)
             session->output_credit = 0;
         }
         LeaveCriticalSection(&platform->mutex);
-        if (!pty_post_output(session->event_port, buffer, length)) break;
+        if (!post_session_event(
+                session,
+                pty_post_output(session->event_port, buffer, length))) {
+            break;
+        }
     }
     windows_mark_output_closed(session);
     EnterCriticalSection(&platform->mutex);
@@ -346,7 +363,9 @@ static DWORD WINAPI windows_writer(void *argument)
             offset += written;
         }
         if (succeeded) {
-            pty_post_write_complete(session->event_port, chunk->request_id);
+            post_session_event(
+                session,
+                pty_post_write_complete(session->event_port, chunk->request_id));
             int should_post_writable = 0;
             EnterCriticalSection(&platform->mutex);
             if (platform->write_backpressured &&
@@ -357,7 +376,10 @@ static DWORD WINAPI windows_writer(void *argument)
             }
             LeaveCriticalSection(&platform->mutex);
             if (should_post_writable) {
-                pty_post_simple_event(session->event_port, PTY_EVENT_WRITABLE);
+                post_session_event(
+                    session,
+                    pty_post_simple_event(session->event_port,
+                                          PTY_EVENT_WRITABLE));
             }
         } else {
             PtyError error;
@@ -392,7 +414,9 @@ static DWORD WINAPI windows_waiter(void *argument)
     WaitForSingleObject(platform->process, INFINITE);
     DWORD exit_code = 1;
     if (GetExitCodeProcess(platform->process, &exit_code)) {
-        pty_post_process_exit(session->event_port, false, exit_code);
+        post_session_event(
+            session,
+            pty_post_process_exit(session->event_port, false, exit_code));
     } else {
         windows_post_error(session,
                            PTY_ERROR_IO,
@@ -429,7 +453,8 @@ static void windows_post_startup_cancelled(PtySession *session)
                   PTY_ERROR_CLOSED,
                   ERROR_OPERATION_ABORTED,
                   "PTY session closed during startup");
-    pty_post_spawn_failed(session->event_port, &error);
+    post_session_event(session,
+                       pty_post_spawn_failed(session->event_port, &error));
 }
 
 static void windows_finish_unstarted_close(PtySession *session,
@@ -454,7 +479,9 @@ static void windows_finish_unstarted_close(PtySession *session,
     windows_mark_output_closed(session);
     windows_mark_input_closed(session, NULL);
     pty_session_mark_closed(session);
-    pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
+    post_session_event(
+        session,
+        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED));
 }
 
 static void windows_finish_worker_startup_failure(PtySession *session,
@@ -486,7 +513,8 @@ static void windows_finish_worker_startup_failure(PtySession *session,
     LeaveCriticalSection(&platform->mutex);
 
     pty_session_mark_closing(session);
-    pty_post_spawn_failed(session->event_port, error);
+    post_session_event(session,
+                       pty_post_spawn_failed(session->event_port, error));
     windows_mark_output_closed(session);
     windows_mark_input_closed(session, NULL);
     windows_maybe_post_closed(session);
@@ -769,11 +797,17 @@ static DWORD WINAPI windows_bootstrap(void *argument)
                                 &process_id,
                                 &pseudo_console,
                                 &error)) {
-        pty_post_spawn_failed(session->event_port, &error);
-        pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED);
+        post_session_event(
+            session,
+            pty_post_spawn_failed(session->event_port, &error));
+        post_session_event(
+            session,
+            pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED));
         pty_session_mark_closing(session);
         pty_session_mark_closed(session);
-        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
+        post_session_event(
+            session,
+            pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED));
         windows_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
@@ -794,11 +828,17 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         CloseHandle(input_write);
         CloseHandle(output_read);
         ClosePseudoConsole(pseudo_console);
-        pty_post_spawn_failed(session->event_port, &error);
-        pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED);
+        post_session_event(
+            session,
+            pty_post_spawn_failed(session->event_port, &error));
+        post_session_event(
+            session,
+            pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED));
         pty_session_mark_closing(session);
         pty_session_mark_closed(session);
-        pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED);
+        post_session_event(
+            session,
+            pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED));
         windows_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
@@ -899,10 +939,13 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         return 0;
     }
     CloseHandle(process_thread);
-    pty_post_spawned(
-        session->event_port,
-        process_id,
-        PTY_CAPABILITY_RELIABLE_PROCESS_TREE_KILL | PTY_CAPABILITY_CONPTY);
+    post_session_event(
+        session,
+        pty_post_spawned(
+            session->event_port,
+            process_id,
+            PTY_CAPABILITY_RELIABLE_PROCESS_TREE_KILL |
+                PTY_CAPABILITY_CONPTY));
     windows_free_options(&bootstrap->options);
     free(bootstrap);
     pty_session_release(session);
@@ -1162,8 +1205,7 @@ FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
 FFI_PLUGIN_EXPORT void pty_session_abandon(void *opaque_session)
 {
     PtySession *session = opaque_session;
-    if (session == NULL) return;
-    InterlockedExchange(&session->abandoned, 1);
+    if (session == NULL || !pty_session_mark_abandoned(session)) return;
     pty_session_begin_close(session);
     pty_session_release(session);
 }
