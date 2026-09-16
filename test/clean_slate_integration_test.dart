@@ -74,7 +74,6 @@ void main() {
 
       expect(processExit, isA<PtyExitCode>());
       if (processExit case PtyExitCode(:final code)) expect(code, 0);
-      if (processExit case PtyExitCode(:final code)) expect(code, 0);
       final bytes = chunks.expand((chunk) => chunk).toList();
       expect(bytes, List<int>.generate(1000000, (index) => index % 251));
     },
@@ -112,6 +111,62 @@ void main() {
           for (var index = 0; index < arguments.length; index++)
             '$index:${arguments[index]}\n',
         ].join()),
+      );
+    },
+    skip: skipReason,
+  );
+
+  test(
+    'passes Unicode and empty environment values to the child',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['print-env'],
+          environment: const PtyEnvironment.replace({
+            'PTY_TEST_VALUE': '你好🙂',
+            'PTY_EMPTY_VALUE': '',
+          }),
+        ),
+      );
+      final output = await session.output.toList();
+      final exit = await session.done;
+      await session.close();
+      final text = utf8.decode(output.expand((chunk) => chunk).toList());
+
+      expect(exit, isA<PtyExitCode>());
+      if (exit case PtyExitCode(:final code)) expect(code, 0);
+      expect(text.split('\n'), contains('PTY_TEST_VALUE=你好🙂'));
+      expect(text.split('\n'), contains('PTY_EMPTY_VALUE='));
+    },
+    skip: skipReason,
+  );
+
+  test(
+    'starts the child in the requested working directory',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final expectedWorkingDirectory =
+          await Directory('/tmp').resolveSymbolicLinks();
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['print-cwd'],
+          workingDirectory: '/tmp',
+        ),
+      );
+      final output = await session.output.toList();
+      final exit = await session.done;
+      await session.close();
+
+      expect(exit, isA<PtyExitCode>());
+      if (exit case PtyExitCode(:final code)) expect(code, 0);
+      expect(
+        utf8.decode(output.expand((chunk) => chunk).toList()),
+        '$expectedWorkingDirectory\n',
       );
     },
     skip: skipReason,
