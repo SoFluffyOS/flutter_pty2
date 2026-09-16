@@ -16,6 +16,10 @@
 #include <termios.h>
 #include <unistd.h>
 
+#if defined(__linux__)
+#include <sys/syscall.h>
+#endif
+
 #if defined(__APPLE__)
 #include <util.h>
 #elif defined(__ANDROID__)
@@ -419,6 +423,15 @@ static void pty_unix_reset_child_signals(void)
 
 static void close_extra_fds(int status_fd, int maximum_fd)
 {
+#if defined(__linux__) && defined(SYS_close_range)
+    if (status_fd == STDERR_FILENO + 1 &&
+        syscall(SYS_close_range,
+                (unsigned int)(status_fd + 1),
+                UINT_MAX,
+                0) == 0) {
+        return;
+    }
+#endif
     for (int fd = STDERR_FILENO + 1; fd < maximum_fd; fd++) {
         if (fd == status_fd) continue;
         close(fd);
