@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <stdint.h>
 #include <string.h>
@@ -48,8 +49,55 @@ static void assert_spawn_failure(const PtySpawnOptions *options,
     assert(error.kind == (int32_t)expected_kind);
 }
 
+static void assert_fd_three_is_not_inherited(void)
+{
+    const int status_fd = STDERR_FILENO + 1;
+    const int original_fd = fcntl(status_fd, F_DUPFD_CLOEXEC, 100);
+    const int descriptor = open("/dev/null", O_RDONLY);
+    assert(descriptor >= 0);
+    if (descriptor != status_fd) {
+        assert(dup2(descriptor, status_fd) == status_fd);
+        assert(close(descriptor) == 0);
+    }
+
+    const char *arguments[] = {
+        "-c",
+        "if test -e /dev/fd/3; then exit 42; else exit 0; fi",
+    };
+    const char *environment[] = {"PATH=/usr/bin:/bin"};
+    const PtySpawnOptions options = base_options("/bin/sh", arguments, 2, NULL);
+    PtySpawnOptions configured = options;
+    configured.environment = environment;
+    configured.environment_count = 1;
+
+    int master_fd = -1;
+    int slave_fd = -1;
+    pid_t process_id = -1;
+    PtyError error;
+    assert(pty_unix_spawn(&configured,
+                          &master_fd,
+                          &slave_fd,
+                          &process_id,
+                          &error) == 1);
+    int status = 0;
+    assert(waitpid(process_id, &status, 0) == process_id);
+    assert(close(master_fd) == 0);
+    assert(close(slave_fd) == 0);
+    assert(WIFEXITED(status));
+    assert(WEXITSTATUS(status) == 0);
+
+    if (original_fd >= 0) {
+        assert(dup2(original_fd, status_fd) == status_fd);
+        assert(close(original_fd) == 0);
+        return;
+    }
+    assert(close(status_fd) == 0);
+}
+
 int main(void)
 {
+    assert_fd_three_is_not_inherited();
+
     const char *arguments[] = {"-c", "printf '%s' \"$PTY_TEST_VALUE\"", NULL};
     const char *environment[] = {"PATH=/usr/bin:/bin", "PTY_TEST_VALUE=spawn-ok"};
     PtySpawnOptions options = base_options("sh", arguments, 2, NULL);

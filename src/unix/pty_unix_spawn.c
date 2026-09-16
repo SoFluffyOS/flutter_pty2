@@ -425,15 +425,15 @@ static void pty_unix_reset_child_signals(
 static void close_extra_fds(int status_fd, int maximum_fd)
 {
 #if defined(__linux__) && defined(SYS_close_range)
-    if (status_fd == STDERR_FILENO + 1 &&
+    if (status_fd == PTY_CHILD_STATUS_FD &&
         syscall(SYS_close_range,
-                (unsigned int)(status_fd + 1),
+                (unsigned int)(PTY_CHILD_STATUS_FD + 1),
                 UINT_MAX,
                 0) == 0) {
         return;
     }
 #endif
-    for (int fd = STDERR_FILENO + 1; fd < maximum_fd; fd++) {
+    for (int fd = PTY_CHILD_STATUS_FD; fd < maximum_fd; fd++) {
         if (fd == status_fd) continue;
         close(fd);
     }
