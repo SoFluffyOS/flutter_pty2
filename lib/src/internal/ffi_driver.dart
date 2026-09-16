@@ -38,63 +38,69 @@ final class FfiPtyDriver {
       caseInsensitive: Platform.isWindows,
     );
     final port = ReceivePort();
-    final nativeSession = using((arena) {
-      final nativeOptions = arena.allocate<native.PtySpawnOptions>(
-        sizeOf<native.PtySpawnOptions>(),
-      );
-      final executable = options.executable.toNativeUtf8(allocator: arena);
-      final arguments = arena<Pointer<Char>>(options.arguments.length + 1);
-      for (var index = 0; index < options.arguments.length; index++) {
-        (arguments + index).value =
-            options.arguments[index].toNativeUtf8(allocator: arena).cast();
-      }
-      (arguments + options.arguments.length).value = nullptr;
-
-      final environmentValues = environment.entries
-          .map((entry) => '${entry.key}=${entry.value}')
-          .toList(growable: false);
-      final environmentPointers =
-          arena<Pointer<Char>>(environmentValues.length + 1);
-      for (var index = 0; index < environmentValues.length; index++) {
-        (environmentPointers + index).value =
-            environmentValues[index].toNativeUtf8(allocator: arena).cast();
-      }
-      (environmentPointers + environmentValues.length).value = nullptr;
-
-      nativeOptions.ref
-        ..executable = executable.cast()
-        ..arguments = arguments
-        ..argument_count = options.arguments.length
-        ..environment = environmentPointers
-        ..environment_count = environmentValues.length
-        ..working_directory = switch (options.workingDirectory) {
-          final directory? => directory.toNativeUtf8(allocator: arena).cast(),
-          null => nullptr,
-        }
-        ..input_buffer_bytes = options.inputBufferBytes
-        ..output_window_bytes = options.outputWindowBytes
-        ..event_port = port.sendPort.nativePort;
-      nativeOptions.ref.size
-        ..rows = options.size.rows
-        ..columns = options.size.columns
-        ..pixel_width = options.size.pixelWidth
-        ..pixel_height = options.size.pixelHeight;
-
-      final outSession = arena<Pointer<native.PtySession>>();
-      final outError = arena<native.PtyError>();
-      final result = _bindings.pty_session_start(
-        nativeOptions,
-        outSession,
-        outError,
-      );
-      if (result == 0 || outSession.value == nullptr) {
-        throw PtySpawnException(
-          'Starting PTY session failed',
-          nativeError: _readNativeError(outError.ref),
+    late final Pointer<native.PtySession> nativeSession;
+    try {
+      nativeSession = using((arena) {
+        final nativeOptions = arena.allocate<native.PtySpawnOptions>(
+          sizeOf<native.PtySpawnOptions>(),
         );
-      }
-      return outSession.value;
-    });
+        final executable = options.executable.toNativeUtf8(allocator: arena);
+        final arguments = arena<Pointer<Char>>(options.arguments.length + 1);
+        for (var index = 0; index < options.arguments.length; index++) {
+          (arguments + index).value =
+              options.arguments[index].toNativeUtf8(allocator: arena).cast();
+        }
+        (arguments + options.arguments.length).value = nullptr;
+
+        final environmentValues = environment.entries
+            .map((entry) => '${entry.key}=${entry.value}')
+            .toList(growable: false);
+        final environmentPointers =
+            arena<Pointer<Char>>(environmentValues.length + 1);
+        for (var index = 0; index < environmentValues.length; index++) {
+          (environmentPointers + index).value =
+              environmentValues[index].toNativeUtf8(allocator: arena).cast();
+        }
+        (environmentPointers + environmentValues.length).value = nullptr;
+
+        nativeOptions.ref
+          ..executable = executable.cast()
+          ..arguments = arguments
+          ..argument_count = options.arguments.length
+          ..environment = environmentPointers
+          ..environment_count = environmentValues.length
+          ..working_directory = switch (options.workingDirectory) {
+            final directory? => directory.toNativeUtf8(allocator: arena).cast(),
+            null => nullptr,
+          }
+          ..input_buffer_bytes = options.inputBufferBytes
+          ..output_window_bytes = options.outputWindowBytes
+          ..event_port = port.sendPort.nativePort;
+        nativeOptions.ref.size
+          ..rows = options.size.rows
+          ..columns = options.size.columns
+          ..pixel_width = options.size.pixelWidth
+          ..pixel_height = options.size.pixelHeight;
+
+        final outSession = arena<Pointer<native.PtySession>>();
+        final outError = arena<native.PtyError>();
+        final result = _bindings.pty_session_start(
+          nativeOptions,
+          outSession,
+          outError,
+        );
+        if (result == 0 || outSession.value == nullptr) {
+          throw PtySpawnException(
+            'Starting PTY session failed',
+            nativeError: _readNativeError(outError.ref),
+          );
+        }
+        return outSession.value;
+      });
+    } catch (_) {
+      port.close();
+      rethrow;
+    }
 
     final session = _FfiPtySession(
       handle: nativeSession,
