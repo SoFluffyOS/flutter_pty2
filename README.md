@@ -94,86 +94,79 @@ iOS clean-slate runtime support is not yet claimed.
 
 ---
 
-## Project structure
+## Development
 
-This template uses the following structure:
+Install dependencies and run the Dart checks from this directory:
 
-* `src`: Contains the native source code, and a CmakeFile.txt file for building
-  that source code into a dynamic library.
-
-* `lib`: Contains the Dart code that defines the API of the plugin, and which
-  calls into the native code using `dart:ffi`.
-
-* platform folders (`android`, `ios`, `windows`, etc.): Contains the build files
-  for building and bundling the native code library with the platform application.
-
-## Building and bundling native code
-
-The `pubspec.yaml` specifies FFI plugins as follows:
-
-```yaml
-  plugin:
-    platforms:
-      some_platform:
-        ffiPlugin: true
+```sh
+flutter pub get
+dart format --set-exit-if-changed lib test benchmark tool
+flutter analyze
+flutter test
 ```
 
-This configuration invokes the native build for the various target platforms
-and bundles the binaries in Flutter applications using these FFI plugins.
+The unconfigured Dart suite runs all model and controller tests. Native
+integration tests are skipped unless both the native library and fixture are
+provided. Build them with CMake:
 
-This can be combined with dartPluginClass, such as when FFI is used for the
-implementation of one platform in a federated plugin:
-
-```yaml
-  plugin:
-    implements: some_other_plugin
-    platforms:
-      some_platform:
-        dartPluginClass: SomeClass
-        ffiPlugin: true
+```sh
+cmake -S src -B /tmp/flutter_pty2-native \
+  -DFLUTTER_PTY2_BUILD_TESTS=ON
+cmake --build /tmp/flutter_pty2-native
+cmake -S test/fixtures/pty_test_child -B /tmp/flutter_pty2-fixture
+cmake --build /tmp/flutter_pty2-fixture
 ```
 
-A plugin can have both FFI and method channels:
+On macOS, run the configured Unix integration suite with:
 
-```yaml
-  plugin:
-    platforms:
-      some_platform:
-        pluginClass: SomeName
-        ffiPlugin: true
+```sh
+FLUTTER_PTY2_LIBRARY=/tmp/flutter_pty2-native/libflutter_pty2.dylib \
+PTY_TEST_CHILD=/tmp/flutter_pty2-fixture/pty_test_child \
+flutter test test/clean_slate_integration_test.dart
 ```
 
-The native build systems that are invoked by FFI (and method channel) plugins are:
+Use `libflutter_pty2.so` on Linux and `flutter_pty2.dll` on Windows. The
+native CTest suite is available in the native build directory:
 
-* For Android: Gradle, which invokes the Android NDK for native builds.
-  * See the documentation in android/build.gradle.
-* For iOS and macOS: Xcode, via Swift Package Manager or CocoaPods.
-  * See `ios/flutter_pty2/Package.swift` and `ios/flutter_pty2.podspec`.
-  * See `macos/flutter_pty2/Package.swift` and `macos/flutter_pty2.podspec`.
-* For Linux and Windows: CMake.
-  * See the documentation in linux/CMakeLists.txt.
-  * See the documentation in windows/CMakeLists.txt.
+```sh
+ctest --test-dir /tmp/flutter_pty2-native --output-on-failure
+```
 
-## Binding to native code
+The generated clean-slate FFI bindings are checked in under
+`lib/src/generated/`. Regenerate and verify them with:
 
-To use the native code, bindings in Dart are needed.
-To avoid writing these by hand, they are generated from the header file
-(`src/flutter_pty.h`) by `package:ffigen`.
-Regenerate the compatibility bindings with
-`flutter pub run ffigen --config ffigen.yaml`. The clean-slate bindings use
-`ffigen_v2.yaml` and are generated into `lib/src/generated/`.
+```sh
+dart run ffigen --config ffigen_v2.yaml
+git diff --exit-code -- lib/src/generated/flutter_pty_bindings_generated.dart
+```
 
-## Invoking native code
+## Benchmarks
 
-Very short-running native functions can be directly invoked from any isolate.
-For example, see `Pty.write` in `lib/flutter_pty.dart`.
+The benchmark programs cover spawn and close latency, input and output
+throughput, interactive latency, concurrency, and live RSS. Build the native
+library and fixture first, then run a benchmark such as:
 
-Longer-running functions should be invoked on a helper isolate to avoid
-dropping frames in Flutter applications.
-For example, see the output stream handling in `lib/flutter_pty.dart`.
+```sh
+FLUTTER_PTY2_LIBRARY=/tmp/flutter_pty2-native/libflutter_pty2.dylib \
+PTY_TEST_CHILD=/tmp/flutter_pty2-fixture/pty_test_child \
+dart run benchmark/output.dart
+```
 
-## Flutter help
+Results are CSV rows with minimum, median, p95, mean latency, and throughput
+where applicable. Set `PTY_BENCHMARK_ITERATIONS` and
+`PTY_BENCHMARK_WARMUPS` to control sampling. The large-transfer integration
+test defaults to 100 MiB and accepts `PTY_LARGE_TRANSFER_BYTES` for larger
+scheduled runs.
 
-For help getting started with Flutter, view our
-[online documentation](https://flutter.dev/docs), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Native architecture
+
+The clean-slate API uses one Dart receive port per session and a native
+reference-counted session. Unix uses a poll-based reactor with bounded output
+credit and input writes; Windows uses ConPTY with dedicated reader, writer,
+waiter, and close workers. The finalizer only starts non-blocking native
+cleanup; deterministic callers should still await `close()`.
+
+The legacy `Pty.start` API remains available from
+`package:flutter_pty2/flutter_pty.dart`. It is maintained for compatibility
+and retains its manual output acknowledgement behavior; new code should use
+`package:flutter_pty2/flutter_pty2.dart`.
