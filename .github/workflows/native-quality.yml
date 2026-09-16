@@ -118,7 +118,9 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          script: flutter test -d emulator-5554 integration_test/clean_slate_android_integration_test.dart
+          script: |
+            cd example
+            flutter test -d emulator-5554 integration_test/clean_slate_android_integration_test.dart
 
   sanitizer:
     runs-on: ubuntu-latest
