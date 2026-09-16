@@ -149,6 +149,7 @@ static int run_hold(void)
 #if defined(_WIN32)
 static int spawn_self_process(const char *self, const char *argument)
 {
+    (void)self;
     char executable[MAX_PATH];
     const DWORD executable_length = GetModuleFileNameA(
         NULL,
