@@ -5,6 +5,8 @@ cmake_minimum_required(VERSION 3.10)
 
 project(flutter_pty2_library VERSION 1.0.0 LANGUAGES C)
 
+find_package(Threads REQUIRED)
+
 add_library(flutter_pty2 SHARED
   "flutter_pty.c"
   "common/pty_error.c"
@@ -33,6 +35,7 @@ set_target_properties(flutter_pty2 PROPERTIES
 )
 
 target_compile_definitions(flutter_pty2 PUBLIC DART_SHARED_LIB)
+target_link_libraries(flutter_pty2 PRIVATE Threads::Threads)
 
 if (FLUTTER_PTY2_BUILD_TESTS)
   include(CTest)
