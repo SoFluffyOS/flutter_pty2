@@ -34,6 +34,7 @@ void pty_unix_free_options(PtyUnixOwnedOptions *options);
 
 int pty_unix_spawn(const PtySpawnOptions *options,
                    int *master_fd,
+                   int *slave_fd,
                    pid_t *process_id,
                    PtyError *error);
 

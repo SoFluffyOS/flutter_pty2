@@ -477,6 +477,50 @@ void main() {
   );
 
   test(
+    'drains PTY output buffered when the child closes',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      const transferSize = 16 * 1024 + 1;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['flood-output', '$transferSize'],
+          outputWindowBytes: 16 * 1024,
+        ),
+      );
+      final received = <int>[];
+      final outputDone = Completer<void>();
+      final subscription = session.output.listen(
+        received.addAll,
+        onDone: outputDone.complete,
+      );
+      subscription.pause();
+      var paused = true;
+      try {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        subscription.resume();
+        paused = false;
+        final processExit = await session.processExit.timeout(
+          const Duration(seconds: 5),
+        );
+        expect(processExit, isA<PtyExitCode>());
+        final done = await session.done.timeout(const Duration(seconds: 5));
+        await outputDone.future.timeout(const Duration(seconds: 5));
+
+        expect(done, processExit);
+        expect(
+            received, List<int>.generate(transferSize, (index) => index % 251));
+      } finally {
+        if (paused) subscription.resume();
+        await subscription.cancel();
+        await session.close();
+      }
+    },
+    skip: skipReason,
+  );
+
+  test(
     'closes cleanly while process exit and output drain are racing',
     () async {
       final session = await Pty.spawn(

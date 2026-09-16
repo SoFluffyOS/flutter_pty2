@@ -34,10 +34,16 @@ static void assert_spawn_failure(const PtySpawnOptions *options,
                                  PtyErrorKind expected_kind)
 {
     int master_fd = -1;
+    int slave_fd = -1;
     pid_t process_id = -1;
     PtyError error;
-    assert(pty_unix_spawn(options, &master_fd, &process_id, &error) == 0);
+    assert(pty_unix_spawn(options,
+                          &master_fd,
+                          &slave_fd,
+                          &process_id,
+                          &error) == 0);
     assert(master_fd == -1);
+    assert(slave_fd == -1);
     assert(process_id == -1);
     assert(error.kind == (int32_t)expected_kind);
 }
@@ -51,10 +57,16 @@ int main(void)
     options.environment_count = 2;
 
     int master_fd = -1;
+    int slave_fd = -1;
     pid_t process_id = -1;
     PtyError error;
-    assert(pty_unix_spawn(&options, &master_fd, &process_id, &error) == 1);
+    assert(pty_unix_spawn(&options,
+                          &master_fd,
+                          &slave_fd,
+                          &process_id,
+                          &error) == 1);
     assert(master_fd >= 0);
+    assert(slave_fd >= 0);
     assert(process_id > 0);
 
     char output[64] = {0};
@@ -73,6 +85,7 @@ int main(void)
         if (waited == process_id && output_length >= strlen("spawn-ok")) break;
     }
     close(master_fd);
+    close(slave_fd);
     assert(WIFEXITED(process_status));
     assert(WEXITSTATUS(process_status) == 0);
     assert(output_length == strlen("spawn-ok"));

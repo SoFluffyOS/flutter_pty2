@@ -21,9 +21,17 @@
 #define PTY_REACTOR_BUFFER_SIZE (16 * 1024)
 #define PTY_WAKE_BUFFER_SIZE 64
 
+typedef enum PtyReadResult {
+    PTY_READ_CLOSED = 0,
+    PTY_READ_EMPTY = 1,
+    PTY_READ_DATA = 2,
+    PTY_READ_CREDIT_EXHAUSTED = 3,
+} PtyReadResult;
+
 typedef struct PtyUnixPlatform {
     pthread_mutex_t mutex;
     int master_fd;
+    int slave_fd;
     pid_t process_id;
     int wake_pipe[2];
     pthread_t reactor_thread;
@@ -38,6 +46,7 @@ typedef struct PtyUnixPlatform {
     int stopping;
     int write_backpressured;
     int discard_output;
+    int output_hung_up;
     int output_closed;
     int input_closed;
     int session_closed_posted;
@@ -185,6 +194,25 @@ static void mark_input_closed(PtySession *session, const PtyError *error)
     pty_post_input_closed(session->event_port, error);
 }
 
+static void discard_pending_writes(PtyUnixPlatform *platform)
+{
+    while (true) {
+        PtyWriteChunk *chunk = pty_write_queue_dequeue(&platform->write_queue);
+        if (chunk == NULL) return;
+        pty_write_chunk_free(chunk);
+    }
+}
+
+static void close_slave(PtyUnixPlatform *platform)
+{
+    if (platform == NULL) return;
+    pthread_mutex_lock(&platform->mutex);
+    const int slave_fd = platform->slave_fd;
+    platform->slave_fd = -1;
+    pthread_mutex_unlock(&platform->mutex);
+    if (slave_fd >= 0) close(slave_fd);
+}
+
 static int pty_unix_flush_write_queue(PtySession *session)
 {
     PtyUnixPlatform *platform = platform_for(session);
@@ -249,18 +277,25 @@ static int read_output(PtySession *session)
     const int discard = platform->discard_output;
     const int master_fd = platform->master_fd;
     uint64_t credit = session->output_credit;
-    if (master_fd < 0 || (!discard && credit == 0)) {
+    if (master_fd < 0) {
         pthread_mutex_unlock(&platform->mutex);
-        return 1;
+        return PTY_READ_CLOSED;
+    }
+    if (!discard && credit == 0) {
+        pthread_mutex_unlock(&platform->mutex);
+        return PTY_READ_CREDIT_EXHAUSTED;
     }
     size_t capacity = sizeof(buffer);
     if (!platform->discard_output && session->output_credit < capacity) {
         capacity = (size_t)session->output_credit;
     }
     pthread_mutex_unlock(&platform->mutex);
-    if (capacity == 0) return 1;
+    if (capacity == 0) return PTY_READ_CREDIT_EXHAUSTED;
 
-    const ssize_t result = read(master_fd, buffer, capacity);
+    ssize_t result;
+    do {
+        result = read(master_fd, buffer, capacity);
+    } while (result < 0 && errno == EINTR);
     if (result > 0) {
         if (!discard) {
             pthread_mutex_lock(&platform->mutex);
@@ -276,15 +311,16 @@ static int read_output(PtySession *session)
                 pthread_mutex_unlock(&platform->mutex);
             }
         }
-        return 1;
+        return PTY_READ_DATA;
     }
     if (result < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) {
-        return 1;
+        return PTY_READ_EMPTY;
     }
+    if (result == 0 || (result < 0 && errno == EIO)) return PTY_READ_CLOSED;
     if (result < 0) {
         post_child_error(session, PTY_ERROR_IO, errno, "reading PTY output failed");
     }
-    return 0;
+    return PTY_READ_CLOSED;
 }
 
 static void *reactor_worker(void *argument)
@@ -295,6 +331,7 @@ static void *reactor_worker(void *argument)
         pthread_mutex_lock(&platform->mutex);
         const int stopping = platform->stopping;
         const int discard = platform->discard_output;
+        const int output_hung_up = platform->output_hung_up;
         const int has_writes = pty_write_queue_pending_bytes(&platform->write_queue) != 0;
         const uint64_t credit = session->output_credit;
         const int master_fd = platform->master_fd;
@@ -304,9 +341,10 @@ static void *reactor_worker(void *argument)
 
         short events = 0;
         if (discard || credit > 0) events |= POLLIN;
-        if (has_writes) events |= POLLOUT;
+        if (has_writes && !output_hung_up) events |= POLLOUT;
+        const int monitor_master = output_hung_up && events == 0 ? -1 : master_fd;
         struct pollfd descriptors[2] = {
-            {.fd = master_fd, .events = events},
+            {.fd = monitor_master, .events = events},
             {.fd = wake_fd, .events = POLLIN},
         };
         int poll_result;
@@ -317,13 +355,25 @@ static void *reactor_worker(void *argument)
             post_child_error(session, PTY_ERROR_IO, errno, "polling PTY failed");
             break;
         }
-        if ((descriptors[1].revents & POLLIN) != 0) {
+        const int wake_ready = (descriptors[1].revents & POLLIN) != 0;
+        if (wake_ready) {
             pty_unix_drain_wake_pipe(platform);
         }
         pthread_mutex_lock(&platform->mutex);
         const int stopping_after_wake = platform->stopping;
         pthread_mutex_unlock(&platform->mutex);
         if (stopping_after_wake) break;
+        if (wake_ready && atomic_load_explicit(&session->process_exited,
+                                               memory_order_acquire) &&
+            (discard || credit > 0)) {
+            while (true) {
+                const int read_result = read_output(session);
+                if (read_result == PTY_READ_DATA) continue;
+                if (read_result == PTY_READ_EMPTY) close_slave(platform);
+                if (read_result == PTY_READ_CLOSED) goto reactor_done;
+                break;
+            }
+        }
         if ((descriptors[0].revents & POLLOUT) != 0 &&
             !pty_unix_flush_write_queue(session)) {
             pthread_mutex_lock(&platform->mutex);
@@ -331,12 +381,34 @@ static void *reactor_worker(void *argument)
             pthread_mutex_unlock(&platform->mutex);
             break;
         }
-        if ((descriptors[0].revents & POLLIN) != 0 && !read_output(session)) break;
+        int read_result = PTY_READ_EMPTY;
+        int attempted_read = 0;
+        if ((descriptors[0].revents & POLLIN) != 0) {
+            attempted_read = 1;
+            read_result = read_output(session);
+            if (read_result == PTY_READ_CLOSED) break;
+        }
         if ((descriptors[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-            read_output(session);
-            break;
+            pthread_mutex_lock(&platform->mutex);
+            platform->output_hung_up = 1;
+            pthread_mutex_unlock(&platform->mutex);
+            mark_input_closed(session, NULL);
+            discard_pending_writes(platform);
+            if (read_result != PTY_READ_DATA &&
+                read_result != PTY_READ_CREDIT_EXHAUSTED) {
+                read_result = read_output(session);
+            }
+            if (read_result == PTY_READ_CLOSED || read_result == PTY_READ_EMPTY) {
+                break;
+            }
+            continue;
+        }
+        if (attempted_read && read_result == PTY_READ_EMPTY &&
+            atomic_load_explicit(&session->process_exited, memory_order_acquire)) {
+            close_slave(platform);
         }
     }
+reactor_done:
     mark_output_closed(session);
     mark_input_closed(session, NULL);
     pthread_mutex_lock(&platform->mutex);
@@ -361,6 +433,8 @@ static void *waiter_worker(void *argument)
         result = waitpid(platform->process_id, &status, 0);
     } while (result < 0 && errno == EINTR);
     if (result == platform->process_id) {
+        atomic_store_explicit(&session->process_exited, 1, memory_order_release);
+        wake_reactor(platform);
         if (WIFEXITED(status)) {
             pty_post_process_exit(session->event_port, false, WEXITSTATUS(status));
         } else if (WIFSIGNALED(status)) {
@@ -368,8 +442,8 @@ static void *waiter_worker(void *argument)
         }
     } else if (result < 0) {
         post_child_error(session, PTY_ERROR_IO, errno, "waiting for PTY process failed");
+        atomic_store_explicit(&session->process_exited, 1, memory_order_release);
     }
-    atomic_store_explicit(&session->process_exited, 1, memory_order_release);
     pthread_mutex_lock(&platform->mutex);
     platform->waiter_done = 1;
     pthread_mutex_unlock(&platform->mutex);
@@ -384,6 +458,7 @@ static void free_unix_session(PtySession *session)
     PtyUnixPlatform *platform = platform_for(session);
     if (platform != NULL) {
         if (platform->master_fd >= 0) close(platform->master_fd);
+        if (platform->slave_fd >= 0) close(platform->slave_fd);
         if (platform->wake_pipe[0] >= 0) close(platform->wake_pipe[0]);
         if (platform->wake_pipe[1] >= 0) close(platform->wake_pipe[1]);
         pty_write_queue_dispose(&platform->write_queue);
@@ -398,6 +473,7 @@ static void discard_unix_platform(PtySession *session)
     PtyUnixPlatform *platform = platform_for(session);
     if (platform == NULL) return;
     if (platform->master_fd >= 0) close(platform->master_fd);
+    if (platform->slave_fd >= 0) close(platform->slave_fd);
     if (platform->wake_pipe[0] >= 0) close(platform->wake_pipe[0]);
     if (platform->wake_pipe[1] >= 0) close(platform->wake_pipe[1]);
     pty_write_queue_dispose(&platform->write_queue);
@@ -439,7 +515,9 @@ static void finish_unstarted_close(PtySession *session)
 
     pthread_mutex_lock(&platform->mutex);
     const int master_fd = platform->master_fd;
+    const int slave_fd = platform->slave_fd;
     platform->master_fd = -1;
+    platform->slave_fd = -1;
     platform->stopping = 1;
     platform->reactor_done = 1;
     platform->waiter_done = 1;
@@ -449,6 +527,7 @@ static void finish_unstarted_close(PtySession *session)
     pthread_mutex_unlock(&platform->mutex);
 
     if (master_fd >= 0) close(master_fd);
+    if (slave_fd >= 0) close(slave_fd);
     while (waitpid(platform->process_id, NULL, 0) < 0 && errno == EINTR) {}
 
     post_startup_cancelled(session);
@@ -481,10 +560,12 @@ static void *bootstrap_worker(void *argument)
     PtyUnixBootstrap *bootstrap = argument;
     PtySession *session = bootstrap->session;
     int master_fd = -1;
+    int slave_fd = -1;
     pid_t process_id = -1;
     PtyError error;
     if (!pty_unix_spawn(&bootstrap->options.options,
                         &master_fd,
+                        &slave_fd,
                         &process_id,
                         &error)) {
         pty_post_spawn_failed(session->event_port, &error);
@@ -502,13 +583,22 @@ static void *bootstrap_worker(void *argument)
     int mutex_initialized = 0;
     if (platform != NULL) {
         platform->master_fd = -1;
+        platform->slave_fd = -1;
         platform->wake_pipe[0] = -1;
         platform->wake_pipe[1] = -1;
         if (pthread_mutex_init(&platform->mutex, NULL) == 0) {
             mutex_initialized = 1;
         }
     }
-    if (platform == NULL || !mutex_initialized || create_wake_pipe(platform) != 0) {
+    int retained_slave_fd = -1;
+    if (platform != NULL && mutex_initialized && create_wake_pipe(platform) == 0) {
+        retained_slave_fd = fcntl(slave_fd, F_DUPFD_CLOEXEC, 4);
+        if (retained_slave_fd >= 0) {
+            close(slave_fd);
+            slave_fd = retained_slave_fd;
+        }
+    }
+    if (platform == NULL || !mutex_initialized || retained_slave_fd < 0) {
         const int error_number = errno == 0 ? ENOMEM : errno;
         if (platform != NULL) {
             if (platform->wake_pipe[0] >= 0) close(platform->wake_pipe[0]);
@@ -517,6 +607,7 @@ static void *bootstrap_worker(void *argument)
             free(platform);
         }
         close(master_fd);
+        close(slave_fd);
         kill(process_id, SIGKILL);
         while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
         pty_error_set_errno(&error, PTY_ERROR_OUT_OF_MEMORY, error_number,
@@ -531,6 +622,7 @@ static void *bootstrap_worker(void *argument)
         return NULL;
     }
     platform->master_fd = master_fd;
+    platform->slave_fd = slave_fd;
     platform->process_id = process_id;
     pty_write_queue_init(&platform->write_queue,
                          session->input_buffer_limit);
@@ -718,7 +810,7 @@ FFI_PLUGIN_EXPORT int32_t pty_session_try_write(PtySession *session,
     PtyUnixPlatform *platform = platform_for(session);
     if (platform == NULL || length == 0) return PTY_WRITE_CLOSED;
     pthread_mutex_lock(&platform->mutex);
-    if (platform->stopping) {
+    if (platform->stopping || platform->input_closed) {
         pthread_mutex_unlock(&platform->mutex);
         return PTY_WRITE_CLOSED;
     }

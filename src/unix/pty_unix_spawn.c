@@ -467,13 +467,16 @@ static void cleanup_failed_child(pid_t process_id, int master_fd)
 
 int pty_unix_spawn(const PtySpawnOptions *options,
                    int *master_fd,
+                   int *slave_fd,
                    pid_t *process_id,
                    PtyError *error)
 {
     if (master_fd != NULL) *master_fd = -1;
+    if (slave_fd != NULL) *slave_fd = -1;
     if (process_id != NULL) *process_id = -1;
     pty_error_clear(error);
-    if (options == NULL || master_fd == NULL || process_id == NULL ||
+    if (options == NULL || master_fd == NULL || slave_fd == NULL ||
+        process_id == NULL ||
         options->executable == NULL || options->executable[0] == '\0') {
         pty_error_set(error,
                       PTY_ERROR_DOMAIN_INTERNAL,
@@ -668,7 +671,6 @@ int pty_unix_spawn(const PtySpawnOptions *options,
         _exit(127);
     }
 
-    close(slave);
     close(status_fd);
     PtyChildError child_error;
     const int status_result = read_child_error(status_pipe[0], &child_error);
@@ -678,6 +680,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     free(resolved_executable);
     if (status_result != 0) {
         cleanup_failed_child(child, master);
+        close(slave);
         if (status_result < 0) {
             pty_error_set(error,
                           PTY_ERROR_DOMAIN_INTERNAL,
@@ -702,11 +705,13 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     if (flags < 0 || fcntl(master, F_SETFL, flags | O_NONBLOCK) != 0) {
         const int error_number = errno;
         cleanup_failed_child(child, master);
+        close(slave);
         pty_error_set_errno(error, PTY_ERROR_SPAWN_FAILED, error_number,
                             "configuring PTY master failed");
         return 0;
     }
     *master_fd = master;
+    *slave_fd = slave;
     *process_id = child;
     return 1;
 }
