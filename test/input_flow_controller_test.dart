@@ -46,6 +46,29 @@ void main() {
     await flush;
   });
 
+  test('keeps separate asynchronous writes ordered', () async {
+    final requests = <int>[];
+    final input = InputFlowController(
+      maxChunkSize: 2,
+      nativeTryWrite: (requestId, _) {
+        requests.add(requestId);
+        return PtyWriteResult.accepted;
+      },
+    );
+
+    final first = input.write(Uint8List.fromList([1, 2, 3, 4]));
+    final second = input.write(Uint8List.fromList([5, 6]));
+    expect(requests, [1, 2]);
+
+    input.handleWriteComplete(1);
+    expect(requests, [1, 2]);
+    input.handleWriteComplete(2);
+    expect(requests, [1, 2, 3]);
+    input.handleWriteComplete(3);
+
+    await Future.wait([first, second]);
+  });
+
   test('closes all pending writes with the same error', () async {
     final input = InputFlowController(
       nativeTryWrite: (_, __) => PtyWriteResult.accepted,
