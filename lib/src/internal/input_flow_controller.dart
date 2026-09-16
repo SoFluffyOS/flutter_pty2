@@ -96,17 +96,18 @@ final class InputFlowController implements PtyInput {
     final pending = _inflight.remove(requestId);
     if (pending == null) return;
     final operation = pending.operation;
-    if (operation == null) {
-      if (!pending.completer.isCompleted) pending.completer.complete();
-    } else {
-      operation.inflightCount--;
-      if (operation.offset >= operation.data.length &&
-          operation.inflightCount == 0) {
-        _waiting.removeFirst();
-        if (!operation.completer.isCompleted) {
-          operation.completer.complete();
+    switch (operation) {
+      case null:
+        if (!pending.completer.isCompleted) pending.completer.complete();
+      case final operation:
+        operation.inflightCount--;
+        if (operation.offset >= operation.data.length &&
+            operation.inflightCount == 0) {
+          _waiting.removeFirst();
+          if (!operation.completer.isCompleted) {
+            operation.completer.complete();
+          }
         }
-      }
     }
     _pump();
     _releaseOwnerIfIdle();

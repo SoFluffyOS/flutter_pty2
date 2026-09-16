@@ -57,12 +57,13 @@ void main() {
                     ),
                   );
                 case 2:
-                  if (paused) {
-                    subscription.resume();
-                    paused = false;
-                  } else {
-                    subscription.pause();
-                    paused = true;
+                  switch (paused) {
+                    case true:
+                      subscription.resume();
+                      paused = false;
+                    case false:
+                      subscription.pause();
+                      paused = true;
                   }
                 case 3:
                   session.sendSignal(PosixSignal.term);
