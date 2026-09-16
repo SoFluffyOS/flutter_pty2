@@ -350,6 +350,35 @@ void main() {
   );
 
   test(
+    'rejects native operations after close',
+    () async {
+      final session = await Pty.spawn(
+        const PtySpawnOptions(
+          executable: '/bin/sh',
+          arguments: ['-c', 'sleep 30'],
+        ),
+      );
+      await session.close();
+
+      expect(() => session.pid, throwsA(isA<PtyClosedException>()));
+      expect(
+        () => session.resize(const PtySize(columns: 120, rows: 40)),
+        throwsA(isA<PtyClosedException>()),
+      );
+      expect(() => session.kill(), throwsA(isA<PtyClosedException>()));
+      expect(
+        () => session.sendSignal(PosixSignal.term),
+        throwsA(isA<PtyClosedException>()),
+      );
+      expect(
+        session.input.tryWrite(Uint8List.fromList([1])),
+        PtyWriteResult.closed,
+      );
+    },
+    skip: nativeSkipReason,
+  );
+
+  test(
     'round-trips an exact 100 MiB binary stream',
     () async {
       final child = fixture;

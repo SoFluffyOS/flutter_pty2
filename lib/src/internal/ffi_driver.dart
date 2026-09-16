@@ -173,7 +173,10 @@ final class _FfiPtySession
   bool _finalizerDetached = false;
 
   @override
-  int get pid => bindings.pty_session_pid(handle).toInt();
+  int get pid {
+    _ensureOpen();
+    return bindings.pty_session_pid(handle).toInt();
+  }
 
   @override
   PtyCapabilities get capabilities {
@@ -275,6 +278,7 @@ final class _FfiPtySession
 
   @override
   void resize(PtySize size) {
+    _ensureOpen();
     size.validate();
     using((arena) {
       final nativeSize = arena<native.PtySize>();
@@ -294,6 +298,7 @@ final class _FfiPtySession
 
   @override
   void kill() {
+    _ensureOpen();
     using((arena) {
       final error = arena<native.PtyError>();
       final result = bindings.pty_session_kill(handle, error);
@@ -307,6 +312,7 @@ final class _FfiPtySession
   @override
   void sendSignal(PosixSignal signal,
       {PosixSignalTarget target = PosixSignalTarget.foregroundProcessGroup}) {
+    _ensureOpen();
     if (Platform.isWindows) {
       throw const PtyUnsupportedException(
         'POSIX signals are unsupported on Windows',
@@ -331,6 +337,7 @@ final class _FfiPtySession
   Future<void> close() async {
     if (_closing) return _closedCompleter.future;
     _closing = true;
+    _input.closeWithError(const PtyClosedException());
     bindings.pty_session_begin_close(handle);
     await _closedCompleter.future;
     if (!_finalizerDetached) {
@@ -364,6 +371,10 @@ final class _FfiPtySession
         _ => PtyWriteResult.closed,
       };
     });
+  }
+
+  void _ensureOpen() {
+    if (_closing) throw const PtyClosedException();
   }
 }
 
