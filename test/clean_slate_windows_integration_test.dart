@@ -84,6 +84,46 @@ void main() {
   );
 
   test(
+    'reports typed errors for Windows spawn failures',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+
+      await expectLater(
+        Pty.spawn(
+          const PtySpawnOptions(
+            executable: r'C:\flutter-pty-missing\pty_test_child.exe',
+          ),
+        ),
+        throwsA(
+          isA<PtySpawnException>().having(
+            (exception) => exception.nativeError?.kind,
+            'native error kind',
+            PtyErrorKind.notFound,
+          ),
+        ),
+      );
+
+      await expectLater(
+        Pty.spawn(
+          PtySpawnOptions(
+            executable: child,
+            workingDirectory: r'C:\flutter-pty-missing-working-directory',
+          ),
+        ),
+        throwsA(
+          isA<PtySpawnException>().having(
+            (exception) => exception.nativeError?.kind,
+            'native error kind',
+            PtyErrorKind.workingDirectoryFailed,
+          ),
+        ),
+      );
+    },
+    skip: skipReason,
+  );
+
+  test(
     'round-trips binary input through ConPTY',
     () async {
       final child = fixture;

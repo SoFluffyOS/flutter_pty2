@@ -528,6 +528,19 @@ static void windows_free_session(PtySession *session)
     free(session);
 }
 
+static PtyErrorKind windows_spawn_error_kind(DWORD error_code)
+{
+    switch (error_code) {
+        case ERROR_FILE_NOT_FOUND:
+        case ERROR_PATH_NOT_FOUND:
+            return PTY_ERROR_NOT_FOUND;
+        case ERROR_ACCESS_DENIED:
+            return PTY_ERROR_PERMISSION_DENIED;
+        default:
+            return PTY_ERROR_SPAWN_FAILED;
+    }
+}
+
 static int windows_create_process(const PtySpawnOptions *options,
                                   HANDLE *input_write,
                                   HANDLE *output_read,
@@ -642,6 +655,27 @@ static int windows_create_process(const PtySpawnOptions *options,
                       "building Windows process arguments failed");
         goto failure;
     }
+    if (options->working_directory != NULL &&
+        options->working_directory[0] != '\0') {
+        const DWORD attributes = GetFileAttributesW(working_directory);
+        if (attributes == INVALID_FILE_ATTRIBUTES) {
+            const DWORD error_code = GetLastError();
+            pty_error_set(error,
+                          PTY_ERROR_DOMAIN_WIN32,
+                          PTY_ERROR_WORKING_DIRECTORY,
+                          error_code,
+                          "checking Windows working directory failed");
+            goto failure;
+        }
+        if ((attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+            pty_error_set(error,
+                          PTY_ERROR_DOMAIN_WIN32,
+                          PTY_ERROR_WORKING_DIRECTORY,
+                          ERROR_DIRECTORY,
+                          "Windows working directory is not a directory");
+            goto failure;
+        }
+    }
     startup_info.StartupInfo.cb = sizeof(startup_info);
     startup_info.lpAttributeList = attributes;
     if (!CreateProcessW(NULL,
@@ -656,10 +690,11 @@ static int windows_create_process(const PtySpawnOptions *options,
                         working_directory,
                         &startup_info.StartupInfo,
                         &process_info)) {
+        const DWORD error_code = GetLastError();
         pty_error_set(error,
                       PTY_ERROR_DOMAIN_WIN32,
-                      PTY_ERROR_SPAWN_FAILED,
-                      GetLastError(),
+                      windows_spawn_error_kind(error_code),
+                      error_code,
                       "creating ConPTY process failed");
         goto failure;
     }
