@@ -496,9 +496,22 @@ static void *bootstrap_worker(void *argument)
         return NULL;
     }
     platform->waiter_started = 1;
-    atomic_store_explicit(&session->lifecycle,
-                          PTY_LIFECYCLE_RUNNING,
-                          memory_order_release);
+    int expected_lifecycle = PTY_LIFECYCLE_STARTING;
+    if (!atomic_compare_exchange_strong_explicit(&session->lifecycle,
+                                                 &expected_lifecycle,
+                                                 PTY_LIFECYCLE_RUNNING,
+                                                 memory_order_acq_rel,
+                                                 memory_order_acquire)) {
+        pthread_mutex_lock(&platform->mutex);
+        platform->stopping = 1;
+        pthread_mutex_unlock(&platform->mutex);
+        stop_process(platform);
+        wake_reactor(platform);
+        pty_unix_free_options(&bootstrap->options);
+        free(bootstrap);
+        pty_session_release(session);
+        return NULL;
+    }
     pty_post_spawned(session->event_port, process_id, 0x07);
     pty_unix_free_options(&bootstrap->options);
     free(bootstrap);

@@ -729,6 +729,21 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         return 0;
     }
 
+    if (InterlockedCompareExchange(&session->lifecycle,
+                                   PTY_LIFECYCLE_RUNNING,
+                                   PTY_LIFECYCLE_STARTING) !=
+        PTY_LIFECYCLE_STARTING) {
+        windows_stop_process(platform);
+        ResumeThread(process_thread);
+        CloseHandle(process_thread);
+        if (platform->reader_started) WaitForSingleObject(platform->reader_thread, INFINITE);
+        if (platform->writer_started) WaitForSingleObject(platform->writer_thread, INFINITE);
+        if (platform->waiter_started) WaitForSingleObject(platform->waiter_thread, INFINITE);
+        windows_free_options(&bootstrap->options);
+        free(bootstrap);
+        pty_session_release(session);
+        return 0;
+    }
     if (ResumeThread(process_thread) == (DWORD)-1) {
         pty_error_set(&error,
                       PTY_ERROR_DOMAIN_WIN32,
@@ -745,7 +760,6 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         return 0;
     }
     CloseHandle(process_thread);
-    InterlockedExchange(&session->lifecycle, PTY_LIFECYCLE_RUNNING);
     pty_post_spawned(session->event_port, process_id, 0x18);
     windows_free_options(&bootstrap->options);
     free(bootstrap);
