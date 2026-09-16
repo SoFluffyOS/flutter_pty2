@@ -1,0 +1,41 @@
+name: native-quality
+
+on:
+  schedule:
+    - cron: '17 2 * * 0'
+  workflow_dispatch:
+
+jobs:
+  sanitizer:
+    runs-on: ubuntu-latest
+    env:
+      ASAN_OPTIONS: halt_on_error=1:detect_leaks=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      LSAN_OPTIONS: exitcode=23
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Configure sanitizer build
+        run: >-
+          cmake -S src -B build/sanitized -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DFLUTTER_PTY2_BUILD_TESTS=ON
+          "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined
+          -DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=address,undefined
+
+      - name: Build native tests
+        run: cmake --build build/sanitized --parallel 4
+
+      - name: Run native CTest suite
+        run: ctest --test-dir build/sanitized --output-on-failure
+
+      - name: Run full lifecycle stress
+        run: build/sanitized/tests/pty_unix_session_stress_test
+        env:
+          ASAN_OPTIONS: halt_on_error=1:detect_leaks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          LSAN_OPTIONS: exitcode=23
