@@ -26,6 +26,18 @@ typedef enum PtyLifecycle {
 
 typedef void (*PtySessionFreeFunction)(PtySession *session);
 
+/*
+ * Ownership and synchronization:
+ *
+ * - The lifecycle, process/output/input state, and abandoned flag are atomic.
+ * - event_port, the buffer limits, and free_function are immutable after
+ *   pty_session_start initializes the session and publishes it to workers.
+ * - output_credit is guarded by the platform mutex after platform publication;
+ *   bootstrap initialization happens before any worker can observe it.
+ * - platform is assigned once during bootstrap and cleared only on a startup
+ *   failure before the session can be released by a worker.
+ * - ref_count is atomic and owns the session allocation across all workers.
+ */
 struct PtySession {
 #if defined(_WIN32)
     volatile LONG ref_count;
@@ -83,6 +95,12 @@ typedef struct PtyWriteChunk {
 } PtyWriteChunk;
 
 typedef struct PtyWriteQueue {
+    /*
+     * mutex guards head, tail, and pending_bytes. limit is immutable after
+     * initialization. initialized changes only during setup and final
+     * disposal, after all queue users have stopped. A write chunk is owned by
+     * either this queue or the caller that dequeued it, never both.
+     */
     PtyMutex mutex;
     PtyWriteChunk *head;
     PtyWriteChunk *tail;

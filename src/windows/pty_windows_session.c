@@ -24,6 +24,17 @@ typedef struct PtyWindowsOwnedOptions {
     char *working_directory;
 } PtyWindowsOwnedOptions;
 
+/*
+ * The platform mutex guards stop/close state, worker completion flags,
+ * backpressure flags, input/output closure flags, and the closed-event guard.
+ * The process, ConPTY, pipe, job, and process-id handles are initialized by
+ * bootstrap before publication and remain stable until final teardown. Worker
+ * handles and started flags are bootstrap-owned and are read during teardown
+ * only after the corresponding worker has stopped. The write queue owns its
+ * own mutex for chunk links and byte counts. session->output_credit is
+ * protected by this platform mutex. No platform mutex is held while a Dart
+ * event is posted.
+ */
 typedef struct PtyWindowsPlatform {
     CRITICAL_SECTION mutex;
     CONDITION_VARIABLE condition;

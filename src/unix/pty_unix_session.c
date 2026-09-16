@@ -28,6 +28,17 @@ typedef enum PtyReadResult {
     PTY_READ_CREDIT_EXHAUSTED = 3,
 } PtyReadResult;
 
+/*
+ * The platform mutex guards all mutable session state in this structure:
+ * descriptors that can be closed, stop/close flags, worker completion flags,
+ * backpressure flags, output/input closure flags, and the closed-event guard.
+ * process_id and the wake descriptors are immutable after bootstrap setup.
+ * Worker handles and their started flags are bootstrap-owned and are read only
+ * during teardown after the corresponding worker has stopped. The write queue
+ * owns its own mutex for chunk links and byte counts. session->output_credit is
+ * protected by this same platform mutex. No platform mutex is held while a
+ * Dart event is posted.
+ */
 typedef struct PtyUnixPlatform {
     pthread_mutex_t mutex;
     int master_fd;
