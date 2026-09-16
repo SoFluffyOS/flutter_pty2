@@ -17,6 +17,8 @@
 
 #if defined(__APPLE__)
 #include <util.h>
+#elif defined(__ANDROID__)
+#include <fcntl.h>
 #else
 #include <pty.h>
 #endif
@@ -25,6 +27,57 @@
 
 #define PTY_CHILD_STATUS_FD 3
 #define PTY_DEFAULT_PATH "/usr/local/bin:/usr/bin:/bin"
+
+#if defined(__ANDROID__)
+static int pty_open(int *master_fd,
+                    int *slave_fd,
+                    const struct winsize *window)
+{
+    *master_fd = posix_openpt(O_RDWR | O_NOCTTY);
+    if (*master_fd < 0) return -1;
+    if (grantpt(*master_fd) != 0 || unlockpt(*master_fd) != 0) {
+        const int error_number = errno;
+        close(*master_fd);
+        *master_fd = -1;
+        errno = error_number;
+        return -1;
+    }
+    char *slave_name = ptsname(*master_fd);
+    if (slave_name == NULL) {
+        const int error_number = errno;
+        close(*master_fd);
+        *master_fd = -1;
+        errno = error_number;
+        return -1;
+    }
+    *slave_fd = open(slave_name, O_RDWR | O_NOCTTY);
+    if (*slave_fd < 0) {
+        const int error_number = errno;
+        close(*master_fd);
+        *master_fd = -1;
+        errno = error_number;
+        return -1;
+    }
+    if (ioctl(*slave_fd, TIOCSWINSZ, window) != 0) {
+        const int error_number = errno;
+        close(*slave_fd);
+        close(*master_fd);
+        *slave_fd = -1;
+        *master_fd = -1;
+        errno = error_number;
+        return -1;
+    }
+    return 0;
+}
+#else
+static int pty_open(int *master_fd,
+                    int *slave_fd,
+                    const struct winsize *window)
+{
+    struct winsize mutable_window = *window;
+    return openpty(master_fd, slave_fd, NULL, NULL, &mutable_window);
+}
+#endif
 
 static char *copy_string(const char *value)
 {
@@ -444,7 +497,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     };
     int master = -1;
     int slave = -1;
-    if (openpty(&master, &slave, NULL, NULL, &window) != 0) {
+    if (pty_open(&master, &slave, &window) != 0) {
         pty_error_set_errno(error, PTY_ERROR_SPAWN_FAILED, errno, "openpty failed");
         free_string_vector(argv, options->argument_count + 1);
         free_string_vector(envp, options->environment_count);
