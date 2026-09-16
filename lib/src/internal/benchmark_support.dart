@@ -23,6 +23,26 @@ int benchmarkWarmups() {
   return benchmarkEnvironmentInt('PTY_BENCHMARK_WARMUPS', fallback: 1);
 }
 
+List<int> benchmarkSessionCounts() {
+  final rawValue = Platform.environment['PTY_BENCHMARK_SESSION_COUNTS'];
+  if (rawValue == null || rawValue.isEmpty) {
+    return const [1, 10, 50, 100];
+  }
+  final counts = <int>[];
+  for (final rawCount in rawValue.split(',')) {
+    final count = int.tryParse(rawCount.trim());
+    if (count == null || count < 1) {
+      throw ArgumentError.value(
+        rawValue,
+        'PTY_BENCHMARK_SESSION_COUNTS',
+        'must be a comma-separated list of positive integers',
+      );
+    }
+    counts.add(count);
+  }
+  return List<int>.unmodifiable(counts);
+}
+
 int benchmarkEnvironmentInt(String name, {required int fallback}) {
   final rawValue = Platform.environment[name];
   if (rawValue == null || rawValue.isEmpty) return fallback;
@@ -44,6 +64,15 @@ String benchmarkEnvironment(String name) {
     throw StateError('Set $name before running the PTY benchmark.');
   }
   return value;
+}
+
+String describeBenchmarkError(Object error) {
+  if (error case PtyException(:final nativeError?)) {
+    return '$error; native=${nativeError.kind} '
+        'domain=${nativeError.domain} code=${nativeError.code} '
+        'message=${nativeError.message}';
+  }
+  return '$error';
 }
 
 PtySpawnOptions benchmarkFixtureOptions(
