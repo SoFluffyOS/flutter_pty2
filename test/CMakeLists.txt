@@ -22,6 +22,9 @@ function(add_pty_native_test test_name source_file)
     set_tests_properties(${test_name} PROPERTIES
       ENVIRONMENT "PTY_NATIVE_STRESS_CYCLES=1000"
     )
+    if (APPLE)
+      target_link_libraries(${test_name} PRIVATE proc)
+    endif()
   endif()
 endfunction()
 

@@ -1,10 +1,17 @@
 #include <assert.h>
+#include <errno.h>
 #include <dirent.h>
+#include <limits.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
+
+#if defined(__APPLE__)
+#include <libproc.h>
+#endif
 
 #include "../src/flutter_pty.h"
 #include "../src/include/dart_api_dl.h"
@@ -110,6 +117,74 @@ static int count_live_threads(void)
 }
 #endif
 
+#if defined(__linux__)
+static int process_id_from_name(const char *name, pid_t *process_id)
+{
+    char *end = NULL;
+    errno = 0;
+    const long value = strtol(name, &end, 10);
+    if (errno == ERANGE || end == name || *end != '\0' || value <= 0 ||
+        value > INT_MAX) {
+        return 0;
+    }
+    *process_id = (pid_t)value;
+    return 1;
+}
+
+static pid_t process_parent_id(pid_t process_id)
+{
+    char path[64];
+    const int length = snprintf(path,
+                                sizeof(path),
+                                "/proc/%ld/status",
+                                (long)process_id);
+    assert(length > 0 && (size_t)length < sizeof(path));
+    FILE *status = fopen(path, "r");
+    if (status == NULL) {
+        if (errno == ENOENT) return -1;
+        assert(status != NULL);
+    }
+
+    char line[128];
+    int parent_id = -1;
+    while (fgets(line, sizeof(line), status) != NULL) {
+        if (sscanf(line, "PPid: %d", &parent_id) == 1) break;
+    }
+    assert(fclose(status) == 0);
+    return (pid_t)parent_id;
+}
+
+static int count_child_processes(void)
+{
+    DIR *directory = opendir("/proc");
+    assert(directory != NULL);
+    const pid_t current_process_id = getpid();
+    int count = 0;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != NULL) {
+        pid_t process_id;
+        if (!process_id_from_name(entry->d_name, &process_id)) continue;
+        if (process_parent_id(process_id) == current_process_id) count++;
+    }
+    assert(closedir(directory) == 0);
+    return count;
+}
+#elif defined(__APPLE__)
+static int count_child_processes(void)
+{
+    const int buffer_size = proc_listchildpids(getpid(), NULL, 0);
+    assert(buffer_size >= 0);
+    if (buffer_size == 0) return 0;
+
+    pid_t *children = malloc((size_t)buffer_size);
+    assert(children != NULL);
+    const int result = proc_listchildpids(getpid(), children, buffer_size);
+    assert(result >= 0 && result <= buffer_size);
+    free(children);
+    return result / (int)sizeof(*children);
+}
+#endif
+
 int main(void)
 {
     Dart_PostCObject_DL = post_object;
@@ -120,6 +195,7 @@ int main(void)
     }
     assert(cycle_count > 0);
     const int baseline_file_descriptors = count_open_file_descriptors();
+    const int baseline_child_processes = count_child_processes();
 #if defined(__linux__)
     const int baseline_threads = count_live_threads();
 #endif
@@ -158,6 +234,7 @@ int main(void)
     assert(stats.pending_write_chunks == 0);
     assert(stats.pending_write_bytes == 0);
     assert(count_open_file_descriptors() == baseline_file_descriptors);
+    assert(count_child_processes() == baseline_child_processes);
 #if defined(__linux__)
     assert(count_live_threads() == baseline_threads);
 #endif
