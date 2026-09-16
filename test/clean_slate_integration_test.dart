@@ -10,18 +10,20 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
   final fixture = Platform.environment['PTY_TEST_CHILD'];
-  final nativeConfigured = Platform.isMacOS && library?.isNotEmpty == true;
-  final integrationConfigured = Platform.isMacOS &&
+  final nativeConfigured =
+      (Platform.isLinux || Platform.isMacOS) && library?.isNotEmpty == true;
+  final integrationConfigured = (Platform.isLinux || Platform.isMacOS) &&
       library?.isNotEmpty == true &&
       fixture?.isNotEmpty == true;
   final nativeSkipReason = switch (nativeConfigured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY on macOS to run native integration tests.',
+    _ => 'Set FLUTTER_PTY2_LIBRARY on Linux or macOS to run native '
+        'integration tests.',
   };
   final skipReason = switch (integrationConfigured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on macOS to run '
-        'native integration tests.',
+    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on Linux or macOS '
+        'to run native integration tests.',
   };
   test(
     'spawns a process and drains raw output through the clean-slate API',

@@ -62,3 +62,10 @@ jobs:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/libflutter_pty2.dylib
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
         run: flutter test test/clean_slate_integration_test.dart
+
+      - name: Run configured native integration tests on Linux
+        if: runner.os == 'Linux'
+        env:
+          FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/libflutter_pty2.so
+          PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
+        run: flutter test test/clean_slate_integration_test.dart
