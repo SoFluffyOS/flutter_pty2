@@ -83,6 +83,14 @@ typedef enum PtyTryWriteResult {
     PTY_WRITE_ERROR = 3
 } PtyTryWriteResult;
 
+typedef enum PtyCapability {
+    PTY_CAPABILITY_POSIX_SIGNALS = 1,
+    PTY_CAPABILITY_FOREGROUND_PROCESS_GROUPS = 2,
+    PTY_CAPABILITY_PIXEL_DIMENSIONS = 4,
+    PTY_CAPABILITY_RELIABLE_PROCESS_TREE_KILL = 8,
+    PTY_CAPABILITY_CONPTY = 16
+} PtyCapability;
+
 typedef enum PtyEventType {
     PTY_EVENT_SPAWNED = 1,
     PTY_EVENT_SPAWN_FAILED = 2,

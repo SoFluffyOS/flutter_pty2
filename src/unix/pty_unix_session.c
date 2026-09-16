@@ -620,7 +620,12 @@ static void *bootstrap_worker(void *argument)
         pty_session_release(session);
         return NULL;
     }
-    pty_post_spawned(session->event_port, process_id, 0x07);
+    pty_post_spawned(
+        session->event_port,
+        process_id,
+        PTY_CAPABILITY_POSIX_SIGNALS |
+            PTY_CAPABILITY_FOREGROUND_PROCESS_GROUPS |
+            PTY_CAPABILITY_PIXEL_DIMENSIONS);
     pty_unix_free_options(&bootstrap->options);
     free(bootstrap);
     pty_session_release(session);

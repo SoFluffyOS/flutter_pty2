@@ -458,6 +458,14 @@ abstract class PtyTryWriteResult {
   static const int PTY_WRITE_ERROR = 3;
 }
 
+abstract class PtyCapability {
+  static const int PTY_CAPABILITY_POSIX_SIGNALS = 1;
+  static const int PTY_CAPABILITY_FOREGROUND_PROCESS_GROUPS = 2;
+  static const int PTY_CAPABILITY_PIXEL_DIMENSIONS = 4;
+  static const int PTY_CAPABILITY_RELIABLE_PROCESS_TREE_KILL = 8;
+  static const int PTY_CAPABILITY_CONPTY = 16;
+}
+
 abstract class PtyEventType {
   static const int PTY_EVENT_SPAWNED = 1;
   static const int PTY_EVENT_SPAWN_FAILED = 2;

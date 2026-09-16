@@ -1,9 +1,15 @@
 import 'package:flutter_pty2/src/internal/pty_capabilities_codec.dart';
+import 'package:flutter_pty2/src/generated/flutter_pty_bindings_generated.dart'
+    as native;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('decodes Unix capability bits', () {
-    final capabilities = decodePtyCapabilities(0x07);
+    final capabilities = decodePtyCapabilities(
+      native.PtyCapability.PTY_CAPABILITY_POSIX_SIGNALS |
+          native.PtyCapability.PTY_CAPABILITY_FOREGROUND_PROCESS_GROUPS |
+          native.PtyCapability.PTY_CAPABILITY_PIXEL_DIMENSIONS,
+    );
 
     expect(capabilities.posixSignals, isTrue);
     expect(capabilities.foregroundProcessGroups, isTrue);
@@ -13,7 +19,10 @@ void main() {
   });
 
   test('decodes Windows capability bits', () {
-    final capabilities = decodePtyCapabilities(0x18);
+    final capabilities = decodePtyCapabilities(
+      native.PtyCapability.PTY_CAPABILITY_RELIABLE_PROCESS_TREE_KILL |
+          native.PtyCapability.PTY_CAPABILITY_CONPTY,
+    );
 
     expect(capabilities.posixSignals, isFalse);
     expect(capabilities.foregroundProcessGroups, isFalse);

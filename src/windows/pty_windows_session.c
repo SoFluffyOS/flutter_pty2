@@ -864,7 +864,10 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         return 0;
     }
     CloseHandle(process_thread);
-    pty_post_spawned(session->event_port, process_id, 0x18);
+    pty_post_spawned(
+        session->event_port,
+        process_id,
+        PTY_CAPABILITY_RELIABLE_PROCESS_TREE_KILL | PTY_CAPABILITY_CONPTY);
     windows_free_options(&bootstrap->options);
     free(bootstrap);
     pty_session_release(session);
