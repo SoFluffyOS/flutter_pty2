@@ -50,6 +50,13 @@ jobs:
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
         run: flutter test test/clean_slate_random_stress_test.dart
 
+      - name: Run exit-drain stress
+        env:
+          FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
+          PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
+          PTY_EXIT_DRAIN_CYCLES: 10000
+        run: flutter test test/clean_slate_exit_drain_stress_test.dart
+
       - name: Run 100 MiB transfer integration
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
