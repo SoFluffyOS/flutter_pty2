@@ -51,8 +51,9 @@ full and resumes as Dart consumes the stream. Input supports asynchronous
 child has exited and PTY output reaches EOF. Always await `close()` when the
 session is no longer needed.
 
-The existing `Pty.start` API remains available as a compatibility layer. It
-uses the legacy manual-acknowledgement semantics and is not the 2.0 API.
+The existing `Pty.start` API remains available from
+`package:flutter_pty2/flutter_pty.dart` as a compatibility layer. It uses the
+legacy manual-acknowledgement semantics and is not the 2.0 API.
 
 ### Clean-slate backend status
 

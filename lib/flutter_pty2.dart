@@ -1,4 +1,4 @@
-export 'flutter_pty.dart';
+export 'src/pty.dart';
 export 'src/pty_capabilities.dart';
 export 'src/pty_environment.dart';
 export 'src/pty_exception.dart';
