@@ -9,6 +9,7 @@
 * Add an example-app Android integration harness and run it on the emulator in
   native-quality CI.
 * Verify clean-slate Android output and input integration on an API 35 emulator.
+* Add scheduled macOS AddressSanitizer and UndefinedBehaviorSanitizer coverage.
 * Add native lifecycle, transfer, exit-drain, randomized race, finalizer, and
   platform resource-leak coverage, including scheduled 1 GiB transfers and
   10,000 randomized operations.

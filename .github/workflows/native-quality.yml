@@ -156,6 +156,39 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
           LSAN_OPTIONS: exitcode=23
 
+  sanitizer-macos:
+    runs-on: macos-latest
+    env:
+      ASAN_OPTIONS: halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install native dependencies
+        run: brew list ninja >/dev/null 2>&1 || brew install ninja
+
+      - name: Configure sanitizer build
+        run: >-
+          cmake -S src -B build/sanitized-macos -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DFLUTTER_PTY2_BUILD_TESTS=ON
+          "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined
+          -DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=address,undefined
+
+      - name: Build native tests
+        run: cmake --build build/sanitized-macos --parallel 4
+
+      - name: Run native CTest suite
+        run: ctest --test-dir build/sanitized-macos --output-on-failure
+
+      - name: Run sanitizer lifecycle stress
+        run: build/sanitized-macos/tests/pty_unix_session_stress_test
+        env:
+          ASAN_OPTIONS: halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          PTY_NATIVE_STRESS_CYCLES: 1000
+
   thread-sanitizer:
     runs-on: ubuntu-latest
     env:
