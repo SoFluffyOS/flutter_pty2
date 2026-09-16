@@ -451,13 +451,17 @@ int pty_unix_spawn(const PtySpawnOptions *options,
         free(resolved_executable);
         return 0;
     }
-#ifdef IUTF8
     struct termios attributes;
     if (tcgetattr(slave, &attributes) == 0) {
+        // The clean-slate API transports terminal output as bytes.  Leave the
+        // PTY in raw mode so the kernel does not rewrite output (for example,
+        // turning each LF into CRLF through OPOST/ONLCR).
+        cfmakeraw(&attributes);
+#ifdef IUTF8
         attributes.c_iflag |= IUTF8;
+#endif
         tcsetattr(slave, TCSANOW, &attributes);
     }
-#endif
 
     master = move_fd_above(master, PTY_CHILD_STATUS_FD + 1);
     slave = move_fd_above(slave, PTY_CHILD_STATUS_FD + 1);
