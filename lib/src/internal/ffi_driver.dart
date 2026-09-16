@@ -30,11 +30,6 @@ final class FfiPtyDriver {
   static bool _initialized = false;
 
   Future<PtySession> spawn(PtySpawnOptions options) async {
-    if (Platform.isWindows) {
-      throw const PtyUnsupportedException(
-        'The clean-slate PTY backend is not available on Windows yet',
-      );
-    }
     options.validate();
     _ensureInitialized();
 
@@ -177,13 +172,24 @@ final class _FfiPtySession
   int get pid => bindings.pty_session_pid(handle).toInt();
 
   @override
-  PtyCapabilities get capabilities => const PtyCapabilities(
-        posixSignals: true,
-        foregroundProcessGroups: true,
+  PtyCapabilities get capabilities {
+    if (Platform.isWindows) {
+      return const PtyCapabilities(
+        posixSignals: false,
+        foregroundProcessGroups: false,
         pixelDimensions: true,
-        reliableProcessTreeKill: false,
-        conPty: false,
+        reliableProcessTreeKill: true,
+        conPty: true,
       );
+    }
+    return const PtyCapabilities(
+      posixSignals: true,
+      foregroundProcessGroups: true,
+      pixelDimensions: true,
+      reliableProcessTreeKill: false,
+      conPty: false,
+    );
+  }
 
   @override
   Stream<Uint8List> get output => _output.stream;
@@ -297,6 +303,11 @@ final class _FfiPtySession
   @override
   void sendSignal(PosixSignal signal,
       {PosixSignalTarget target = PosixSignalTarget.foregroundProcessGroup}) {
+    if (Platform.isWindows) {
+      throw const PtyUnsupportedException(
+        'POSIX signals are unsupported on Windows',
+      );
+    }
     using((arena) {
       final error = arena<native.PtyError>();
       final result = bindings.pty_session_send_signal(
