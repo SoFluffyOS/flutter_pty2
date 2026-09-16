@@ -52,7 +52,8 @@ Map<String, String> buildEnvironment(
   final result = <String, String>{};
 
   String normalize(String key) {
-    return caseInsensitive ? key.toUpperCase() : key;
+    if (caseInsensitive) return key.toUpperCase();
+    return key;
   }
 
   switch (environment) {

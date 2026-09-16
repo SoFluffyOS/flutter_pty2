@@ -113,7 +113,10 @@ PtyNativeError _readError(List<Object?> message, int index) {
   final domain = _readInt(message, index);
   final kind = _readInt(message, index + 1);
   final code = _readInt(message, index + 2);
-  final messageText = message.length > index + 3 ? message[index + 3] : null;
+  final messageText = switch (message.length > index + 3) {
+    true => message[index + 3],
+    false => null,
+  };
   if (messageText case final String text) {
     return PtyNativeError(
       domain: _enumValue(PtyErrorDomain.values, domain, 'error domain'),
