@@ -48,5 +48,7 @@ endif()
 
 if (ANDROID)
   # Support Android 15 16k page size.
-  target_link_options(flutter_pty2 PRIVATE "-Wl,-z,max-page-size=16384")
+  set_target_properties(flutter_pty2 PROPERTIES
+    LINK_FLAGS "-Wl,-z,max-page-size=16384"
+  )
 endif()
