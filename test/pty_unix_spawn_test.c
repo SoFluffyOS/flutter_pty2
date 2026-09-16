@@ -3,6 +3,10 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <stdint.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -96,9 +100,51 @@ static void assert_fd_three_is_not_inherited(void)
     assert(close(status_fd) == 0);
 }
 
+static void assert_path_permission_failure_is_preserved(void)
+{
+    char directory_template[] = "/tmp/flutter-pty-path-XXXXXX";
+    char *directory = mkdtemp(directory_template);
+    assert(directory != NULL);
+
+    char executable_path[PATH_MAX];
+    const int path_length = snprintf(executable_path,
+                                     sizeof(executable_path),
+                                     "%s/not-executable",
+                                     directory);
+    assert(path_length > 0 && (size_t)path_length < sizeof(executable_path));
+    const int descriptor = open(executable_path,
+                                O_CREAT | O_WRONLY | O_TRUNC,
+                                S_IRUSR | S_IWUSR);
+    assert(descriptor >= 0);
+    assert(close(descriptor) == 0);
+    assert(chmod(executable_path, S_IRUSR | S_IWUSR) == 0);
+
+    const char *arguments[] = {NULL};
+    const char *environment[1];
+    char path_environment[PATH_MAX + 32];
+    const int environment_length = snprintf(path_environment,
+                                            sizeof(path_environment),
+                                            "PATH=%s:/missing",
+                                            directory);
+    assert(environment_length > 0 &&
+           (size_t)environment_length < sizeof(path_environment));
+    environment[0] = path_environment;
+    PtySpawnOptions options = base_options("not-executable",
+                                           arguments,
+                                           0,
+                                           NULL);
+    options.environment = environment;
+    options.environment_count = 1;
+
+    assert_spawn_failure(&options, PTY_ERROR_PERMISSION_DENIED, EACCES);
+    assert(unlink(executable_path) == 0);
+    assert(rmdir(directory) == 0);
+}
+
 int main(void)
 {
     assert_fd_three_is_not_inherited();
+    assert_path_permission_failure_is_preserved();
 
     const char *arguments[] = {"-c", "printf '%s' \"$PTY_TEST_VALUE\"", NULL};
     const char *environment[] = {"PATH=/usr/bin:/bin", "PTY_TEST_VALUE=spawn-ok"};

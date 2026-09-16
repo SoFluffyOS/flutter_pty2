@@ -306,7 +306,16 @@ static char *resolve_executable(const PtySpawnOptions *options,
                                 "checking executable failed");
             return NULL;
         }
-        return copy_string(executable);
+        char *resolved = copy_string(executable);
+        if (resolved == NULL) {
+            pty_error_set(error,
+                          PTY_ERROR_DOMAIN_INTERNAL,
+                          PTY_ERROR_OUT_OF_MEMORY,
+                          ENOMEM,
+                          "copying executable path failed");
+            return NULL;
+        }
+        return resolved;
     }
 
     const char *path = environment_value(
@@ -316,6 +325,7 @@ static char *resolve_executable(const PtySpawnOptions *options,
     if (path == NULL) path = PTY_DEFAULT_PATH;
 
     const char *start = path;
+    int saw_permission_denied = 0;
     while (true) {
         const char *separator = strchr(start, ':');
         const size_t length = separator == NULL
@@ -359,6 +369,9 @@ static char *resolve_executable(const PtySpawnOptions *options,
         const int executable_exists =
             access_path(candidate, options->working_directory) == 0;
         const int access_error = errno;
+        if (!executable_exists && access_error == EACCES) {
+            saw_permission_denied = 1;
+        }
         free(directory);
         if (executable_exists) return candidate;
         free(candidate);
@@ -367,7 +380,9 @@ static char *resolve_executable(const PtySpawnOptions *options,
         start = separator + 1;
     }
 
-    const int error_number = errno == 0 ? ENOENT : errno;
+    const int error_number = saw_permission_denied
+                                 ? EACCES
+                                 : (errno == 0 ? ENOENT : errno);
     pty_error_set_errno(error,
                         error_number == EACCES
                             ? PTY_ERROR_PERMISSION_DENIED
