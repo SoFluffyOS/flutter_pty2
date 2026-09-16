@@ -61,9 +61,22 @@ jobs:
           && cmake --build build/pty_test_child --config Release --parallel 4
 
       - name: Run native tests
+        if: runner.os != 'Windows'
         env:
           PTY_TEST_CHILD_WINDOWS: ${{ github.workspace }}/build/pty_test_child/Release/pty_test_child.exe
         run: ctest --test-dir build --output-on-failure
+
+      - name: Run Windows native tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $library = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build" -Filter flutter_pty2.dll -Recurse | Select-Object -First 1
+          $fixture = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/pty_test_child" -Filter pty_test_child.exe -Recurse | Select-Object -First 1
+          if ($null -eq $library) { throw 'flutter_pty2.dll was not built' }
+          if ($null -eq $fixture) { throw 'pty_test_child.exe was not built' }
+          $env:PTY_TEST_CHILD_WINDOWS = $fixture.FullName
+          $env:PATH = "$($library.DirectoryName);$env:PATH"
+          ctest --test-dir build --output-on-failure
 
       - name: Run tests
         run: flutter test
@@ -81,3 +94,16 @@ jobs:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/libflutter_pty2.so
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
         run: flutter test test/clean_slate_integration_test.dart
+
+      - name: Run configured clean-slate Windows integration tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $library = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build" -Filter flutter_pty2.dll -Recurse | Select-Object -First 1
+          $fixture = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/pty_test_child" -Filter pty_test_child.exe -Recurse | Select-Object -First 1
+          if ($null -eq $library) { throw 'flutter_pty2.dll was not built' }
+          if ($null -eq $fixture) { throw 'pty_test_child.exe was not built' }
+          $env:FLUTTER_PTY2_LIBRARY = $library.FullName
+          $env:PTY_TEST_CHILD = $fixture.FullName
+          $env:PATH = "$($library.DirectoryName);$env:PATH"
+          flutter test test/clean_slate_windows_integration_test.dart
