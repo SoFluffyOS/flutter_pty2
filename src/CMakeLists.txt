@@ -14,7 +14,10 @@ add_library(flutter_pty2 SHARED
 )
 
 if (WIN32)
-  target_sources(flutter_pty2 PRIVATE windows/pty_windows_commandline.c)
+  target_sources(flutter_pty2 PRIVATE
+    windows/pty_windows_commandline.c
+    windows/pty_windows_environment.c
+  )
 endif()
 
 option(FLUTTER_PTY2_BUILD_TESTS "Build native flutter_pty2 tests" OFF)

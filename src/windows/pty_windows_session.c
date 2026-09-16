@@ -12,6 +12,7 @@
 #include "../common/pty_event.h"
 #include "../pty_internal.h"
 #include "pty_windows_commandline.h"
+#include "pty_windows_environment.h"
 
 #define PTY_WINDOWS_IO_BUFFER_SIZE (64 * 1024)
 
@@ -536,7 +537,8 @@ static int windows_create_process(const PtySpawnOptions *options,
     command = pty_windows_build_command_line(options->executable,
                                              options->arguments,
                                              options->argument_count);
-    environment = build_environment((char **)options->environment);
+    environment = pty_windows_build_environment(options->environment,
+                                                options->environment_count);
     working_directory = build_working_directory((char *)options->working_directory);
     if (command == NULL || environment == NULL ||
         (options->working_directory != NULL && working_directory == NULL)) {
