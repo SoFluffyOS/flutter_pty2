@@ -373,7 +373,6 @@ static DWORD WINAPI windows_waiter(void *argument)
 static void windows_stop_process(PtyWindowsPlatform *platform)
 {
     if (platform == NULL) return;
-    if (platform->job != NULL) TerminateJobObject(platform->job, 1);
     HANDLE reader_thread = NULL;
     HANDLE writer_thread = NULL;
     EnterCriticalSection(&platform->mutex);
@@ -382,6 +381,7 @@ static void windows_stop_process(PtyWindowsPlatform *platform)
     if (platform->reader_started) reader_thread = platform->reader_thread;
     if (platform->writer_started) writer_thread = platform->writer_thread;
     LeaveCriticalSection(&platform->mutex);
+    if (platform->job != NULL) TerminateJobObject(platform->job, 1);
     if (reader_thread != NULL) CancelSynchronousIo(reader_thread);
     if (writer_thread != NULL) CancelSynchronousIo(writer_thread);
 }
