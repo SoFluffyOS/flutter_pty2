@@ -600,6 +600,23 @@ void main() {
   );
 
   test(
+    'allows output subscription cancellation after close',
+    () async {
+      final session = await Pty.spawn(
+        const PtySpawnOptions(
+          executable: '/bin/sh',
+          arguments: ['-c', 'sleep 30'],
+        ),
+      );
+      final subscription = session.output.listen((_) {});
+
+      await session.close();
+      await subscription.cancel();
+    },
+    skip: nativeSkipReason,
+  );
+
+  test(
     'round-trips an exact 100 MiB binary stream',
     () async {
       final child = fixture;
