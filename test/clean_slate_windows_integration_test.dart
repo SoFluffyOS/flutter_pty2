@@ -27,10 +27,13 @@ void main() {
         'hello',
         '',
         'hello world',
+        '"',
+        r'\',
         'quote"backslash\\',
         r'C:\Program Files\Test\',
         r'abc\"def',
-        '你好🙂',
+        '你好',
+        '🙂',
       ];
       final session = await Pty.spawn(
         PtySpawnOptions(
