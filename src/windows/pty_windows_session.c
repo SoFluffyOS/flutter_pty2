@@ -850,6 +850,8 @@ static DWORD WINAPI windows_bootstrap(void *argument)
     HANDLE job = NULL;
     HPCON pseudo_console = NULL;
     DWORD process_id = 0;
+    DWORD worker_error = ERROR_NOT_ENOUGH_MEMORY;
+    int worker_start_failed = 0;
     PtyError error;
     if (!windows_create_process(&bootstrap->options.options,
                                 &input_write,
@@ -936,6 +938,8 @@ static DWORD WINAPI windows_bootstrap(void *argument)
     platform->reader_thread = CreateThread(NULL, 0, windows_reader, session, 0, NULL);
     if (platform->reader_thread != NULL) platform->reader_started = 1;
     else {
+        worker_error = GetLastError();
+        worker_start_failed = 1;
         pty_debug_worker_finished(PTY_DEBUG_WORKER_READ);
         pty_session_release(session);
     }
@@ -944,6 +948,8 @@ static DWORD WINAPI windows_bootstrap(void *argument)
     platform->writer_thread = CreateThread(NULL, 0, windows_writer, session, 0, NULL);
     if (platform->writer_thread != NULL) platform->writer_started = 1;
     else {
+        if (!worker_start_failed) worker_error = GetLastError();
+        worker_start_failed = 1;
         pty_debug_worker_finished(PTY_DEBUG_WORKER_WRITE);
         pty_session_release(session);
     }
@@ -952,6 +958,8 @@ static DWORD WINAPI windows_bootstrap(void *argument)
     platform->waiter_thread = CreateThread(NULL, 0, windows_waiter, session, 0, NULL);
     if (platform->waiter_thread != NULL) platform->waiter_started = 1;
     else {
+        if (!worker_start_failed) worker_error = GetLastError();
+        worker_start_failed = 1;
         pty_debug_worker_finished(PTY_DEBUG_WORKER_WAIT);
         pty_session_release(session);
     }
@@ -960,7 +968,7 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         pty_error_set(&error,
                       PTY_ERROR_DOMAIN_INTERNAL,
                       PTY_ERROR_INTERNAL,
-                      GetLastError(),
+                      worker_error,
                       "starting Windows PTY workers failed");
         windows_finish_worker_startup_failure(session, process_thread, &error);
         windows_free_options(&bootstrap->options);
@@ -1059,6 +1067,7 @@ FFI_PLUGIN_EXPORT int32_t pty_session_start(const PtySpawnOptions *options,
     pty_session_retain(session);
     HANDLE thread = CreateThread(NULL, 0, windows_bootstrap, bootstrap, 0, NULL);
     if (thread == NULL) {
+        const DWORD thread_error = GetLastError();
         pty_session_release(session);
         windows_free_options(&bootstrap->options);
         free(bootstrap);
@@ -1066,7 +1075,7 @@ FFI_PLUGIN_EXPORT int32_t pty_session_start(const PtySpawnOptions *options,
         pty_error_set(out_error,
                       PTY_ERROR_DOMAIN_WIN32,
                       PTY_ERROR_INTERNAL,
-                      GetLastError(),
+                      thread_error,
                       "starting PTY bootstrap failed");
         return 0;
     }
