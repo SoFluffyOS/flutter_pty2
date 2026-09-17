@@ -383,7 +383,15 @@ static void windows_stop_process(PtyWindowsPlatform *platform)
     if (platform->reader_started) reader_thread = platform->reader_thread;
     if (platform->writer_started) writer_thread = platform->writer_thread;
     LeaveCriticalSection(&platform->mutex);
-    if (platform->job != NULL) TerminateJobObject(platform->job, 1);
+    BOOL terminated = FALSE;
+    if (platform->job != NULL) {
+        terminated = TerminateJobObject(platform->job, 1);
+    }
+    if (!terminated && platform->process != NULL) {
+        // Closing must not strand the waiter if Job Object termination is
+        // unavailable or fails after the process has been created.
+        TerminateProcess(platform->process, 1);
+    }
     if (reader_thread != NULL) CancelSynchronousIo(reader_thread);
     if (writer_thread != NULL) CancelSynchronousIo(writer_thread);
 }
