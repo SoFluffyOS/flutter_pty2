@@ -258,6 +258,7 @@ final class _FfiPtySessionState implements NativeEventHandler {
 
   void _handleAsyncError(PtyNativeError nativeError) {
     final error = PtyIoException('PTY I/O failed', nativeError: nativeError);
+    if (!_spawnCompleter.isCompleted) _spawnCompleter.completeError(error);
     _input.handleClosed(error);
     if (!_processExitCompleter.isCompleted) {
       _processExitCompleter.completeError(error);
