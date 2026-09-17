@@ -194,9 +194,10 @@ void main() {
           arguments: ['copy-input', '${expected.length}'],
         ),
       );
-      final output = await session.output.toList();
+      final outputFuture = session.output.toList();
       await session.input.write(expected);
       final exit = await session.done;
+      final output = await outputFuture;
       await session.close();
 
       expect(exit, isA<PtyExitCode>());
