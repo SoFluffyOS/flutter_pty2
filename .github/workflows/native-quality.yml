@@ -117,6 +117,68 @@ jobs:
           PTY_LARGE_TRANSFER_BYTES: 1073741824
         run: flutter test test/clean_slate_large_transfer_test.dart
 
+  windows-runtime-stress:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build native library and tests
+        run: >-
+          cmake -S src -B build/native
+          -DCMAKE_BUILD_TYPE=Release
+          -DFLUTTER_PTY2_BUILD_TESTS=ON
+          && cmake --build build/native --config Release --parallel 4
+
+      - name: Build integration fixture
+        run: >-
+          cmake -S test/fixtures/pty_test_child -B build/pty_test_child
+          && cmake --build build/pty_test_child --config Release --parallel 4
+
+      - name: Run Windows native stress suite
+        shell: pwsh
+        run: |
+          $library = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/native" -Filter flutter_pty2.dll -Recurse | Select-Object -First 1
+          $fixture = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/pty_test_child" -Filter pty_test_child.exe -Recurse | Select-Object -First 1
+          if ($null -eq $library) { throw 'flutter_pty2.dll was not built' }
+          if ($null -eq $fixture) { throw 'pty_test_child.exe was not built' }
+          $env:PTY_TEST_CHILD_WINDOWS = $fixture.FullName
+          $env:PATH = "$($library.DirectoryName);$env:PATH"
+          ctest --test-dir build/native -C Release --output-on-failure
+
+      - name: Run clean-slate Windows integration
+        shell: pwsh
+        run: |
+          $library = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/native" -Filter flutter_pty2.dll -Recurse | Select-Object -First 1
+          $fixture = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/pty_test_child" -Filter pty_test_child.exe -Recurse | Select-Object -First 1
+          if ($null -eq $library) { throw 'flutter_pty2.dll was not built' }
+          if ($null -eq $fixture) { throw 'pty_test_child.exe was not built' }
+          $env:FLUTTER_PTY2_LIBRARY = $library.FullName
+          $env:PTY_TEST_CHILD = $fixture.FullName
+          $env:PATH = "$($library.DirectoryName);$env:PATH"
+          flutter test test/clean_slate_windows_integration_test.dart
+
+      - name: Run 1 GiB Windows transfer
+        shell: pwsh
+        run: |
+          $library = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/native" -Filter flutter_pty2.dll -Recurse | Select-Object -First 1
+          $fixture = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/pty_test_child" -Filter pty_test_child.exe -Recurse | Select-Object -First 1
+          if ($null -eq $library) { throw 'flutter_pty2.dll was not built' }
+          if ($null -eq $fixture) { throw 'pty_test_child.exe was not built' }
+          $env:FLUTTER_PTY2_LIBRARY = $library.FullName
+          $env:PTY_TEST_CHILD = $fixture.FullName
+          $env:PTY_LARGE_TRANSFER_BYTES = '1073741824'
+          $env:PATH = "$($library.DirectoryName);$env:PATH"
+          flutter test test/clean_slate_large_transfer_test.dart
+
   android-build:
     runs-on: ubuntu-latest
     steps:
