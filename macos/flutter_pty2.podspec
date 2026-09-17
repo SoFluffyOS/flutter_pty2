@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
 Flutter FFI pseudo-terminal plugin for spawning and controlling terminal processes.
                        DESC
   s.homepage         = 'https://github.com/SoFluffyOS/flutter_pty2'
-  s.license          = { :file => '../LICENSE' }
+  s.license          = { :type => 'MIT', :file => '../LICENSE' }
   s.author           = { 'SoFluffy' => 'hi@sofluffy.io' }
 
   # The forwarder C file imports the shared sources from `../src/*` so both
