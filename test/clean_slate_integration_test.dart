@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter_pty2/flutter_pty.dart' as legacy;
 import 'package:flutter_pty2/flutter_pty2.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -49,6 +50,31 @@ void main() {
       );
     },
     skip: skipReason,
+  );
+
+  test(
+    'legacy Pty.start resolves the configured native library',
+    () async {
+      final pty = legacy.Pty.start(
+        '/bin/sh',
+        arguments: const ['-c', 'printf legacy-compat; exit 17'],
+      );
+      final outputFuture = pty.output.toList();
+      try {
+        final results = await Future.wait<Object?>([
+          pty.exitCode,
+          outputFuture,
+        ]);
+        expect(results[0], 17);
+        expect(
+          (results[1] as List<Uint8List>).expand((chunk) => chunk).toList(),
+          'legacy-compat'.codeUnits,
+        );
+      } finally {
+        pty.destroy();
+      }
+    },
+    skip: nativeSkipReason,
   );
 
   test(

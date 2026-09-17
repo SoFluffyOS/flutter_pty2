@@ -12,20 +12,7 @@ import 'package:flutter_pty2/src/internal/internal.dart';
 import 'package:flutter_pty2/src/pty_session.dart';
 import 'package:flutter_pty2/src/pty_spawn_options.dart';
 
-const _libName = 'flutter_pty2';
-
-final DynamicLibrary _dylib = () {
-  if (Platform.isMacOS || Platform.isIOS) {
-    return DynamicLibrary.process();
-  }
-  if (Platform.isAndroid || Platform.isLinux) {
-    return DynamicLibrary.open('lib$_libName.so');
-  }
-  if (Platform.isWindows) {
-    return DynamicLibrary.open('$_libName.dll');
-  }
-  throw UnsupportedError('Unknown platform: ${Platform.operatingSystem}');
-}();
+final DynamicLibrary _dylib = openPtyLibrary();
 
 final _bindings = FlutterPtyBindings(_dylib);
 
