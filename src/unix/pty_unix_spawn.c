@@ -467,6 +467,7 @@ static void pty_unix_reset_child_signals(
 {
     sigaction(SIGABRT, default_signal_action, NULL);
     sigaction(SIGALRM, default_signal_action, NULL);
+    sigaction(SIGBUS, default_signal_action, NULL);
     sigaction(SIGCHLD, default_signal_action, NULL);
     sigaction(SIGFPE, default_signal_action, NULL);
     sigaction(SIGHUP, default_signal_action, NULL);
