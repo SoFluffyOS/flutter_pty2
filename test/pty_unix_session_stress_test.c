@@ -28,6 +28,7 @@ static CycleEvents events = {
     .mutex = PTHREAD_MUTEX_INITIALIZER,
     .condition = PTHREAD_COND_INITIALIZER,
 };
+static Dart_Port_DL active_port;
 
 static bool post_object(Dart_Port_DL port, Dart_CObject *message)
 {
@@ -39,6 +40,10 @@ static bool post_object(Dart_Port_DL port, Dart_CObject *message)
         message->value.as_array.values[0]->value.as_int32;
 
     pthread_mutex_lock(&events.mutex);
+    if (port != active_port) {
+        pthread_mutex_unlock(&events.mutex);
+        return true;
+    }
     if (event_type == PTY_EVENT_PROCESS_EXIT) {
         events.process_exit = 1;
     } else if (event_type == PTY_EVENT_OUTPUT_CLOSED) {
@@ -82,9 +87,10 @@ static int wait_for_events(int wait_for_close)
     return 1;
 }
 
-static void reset_events(void)
+static void reset_events(Dart_Port_DL port)
 {
     pthread_mutex_lock(&events.mutex);
+    active_port = port;
     events.process_exit = 0;
     events.output_closed = 0;
     events.session_closed = 0;
@@ -229,10 +235,13 @@ int main(void)
     };
 
     for (int cycle = 0; cycle < cycle_count; cycle++) {
-        reset_events();
+        const Dart_Port_DL event_port = (Dart_Port_DL)(cycle + 1);
+        reset_events(event_port);
+        PtySpawnOptions cycle_options = options;
+        cycle_options.event_port = event_port;
         PtySession *session = NULL;
         PtyError error;
-        assert(pty_session_start(&options, &session, &error) == 1);
+        assert(pty_session_start(&cycle_options, &session, &error) == 1);
         assert(session != NULL);
         assert(wait_for_events(0));
         pty_session_begin_close(session);
