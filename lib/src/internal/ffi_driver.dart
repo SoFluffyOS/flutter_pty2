@@ -235,13 +235,12 @@ final class _FfiPtySessionState implements NativeEventHandler {
         _input.handleClosed(
             PtyIoException('PTY input closed', nativeError: error));
       case NativeProcessExit(:final exit):
-        if (_processExit != null) return;
+        if (_processExit != null || _processExitCompleter.isCompleted) return;
         _processExit = exit;
         _processExitCompleter.complete(exit);
         _maybeCompleteDone();
       case NativeAsyncError(:final error):
-        _input
-            .handleClosed(PtyIoException('PTY I/O failed', nativeError: error));
+        _handleAsyncError(error);
       case NativeSessionClosed():
         if (!_closedCompleter.isCompleted) _closedCompleter.complete();
     }
@@ -251,6 +250,15 @@ final class _FfiPtySessionState implements NativeEventHandler {
   void handleProtocolError(String message) {
     final error = StateError(message);
     if (!_spawnCompleter.isCompleted) _spawnCompleter.completeError(error);
+    if (!_processExitCompleter.isCompleted) {
+      _processExitCompleter.completeError(error);
+    }
+    if (!_doneCompleter.isCompleted) _doneCompleter.completeError(error);
+  }
+
+  void _handleAsyncError(PtyNativeError nativeError) {
+    final error = PtyIoException('PTY I/O failed', nativeError: nativeError);
+    _input.handleClosed(error);
     if (!_processExitCompleter.isCompleted) {
       _processExitCompleter.completeError(error);
     }

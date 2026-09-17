@@ -19,7 +19,7 @@ void main() {
     expect((output as NativeOutput).bytes, [1, 2, 3]);
   });
 
-  test('parses typed errors and signal exits', () {
+  test('parses typed errors, async errors, and signal exits', () {
     final event = NativeEvent.parse(<Object?>[
       2,
       PtyErrorDomain.posix.index + 1,
@@ -27,9 +27,17 @@ void main() {
       2,
       'missing executable',
     ]);
+    final asyncError = NativeEvent.parse(<Object?>[
+      9,
+      PtyErrorDomain.win32.index + 1,
+      PtyErrorKind.io.index + 1,
+      109,
+      'read failed',
+    ]);
     final exit = NativeEvent.parse(<Object?>[8, 1, 15]);
 
     expect((event as NativeSpawnFailed).error.kind, PtyErrorKind.notFound);
+    expect((asyncError as NativeAsyncError).error.kind, PtyErrorKind.io);
     final processExit = (exit as NativeProcessExit).exit;
     expect(processExit, isA<PtySignalExit>());
     expect((processExit as PtySignalExit).signal, 15);
