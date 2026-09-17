@@ -1,10 +1,12 @@
 import 'dart:ffi';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter_pty2/src/generated/flutter_pty_bindings_generated.dart'
     as native;
 import 'package:flutter_pty2/src/internal/ffi_session.dart';
 import 'package:flutter_pty2/src/internal/native_event.dart';
+import 'package:flutter_pty2/src/internal/native_event_pump.dart';
 import 'package:flutter_pty2/src/pty_exception.dart';
 import 'package:flutter_pty2/src/pty_exit.dart';
 import 'package:flutter_pty2/src/pty_input.dart';
@@ -167,6 +169,26 @@ void main() {
     expect(_protocolDiscardCalls, 1);
     subscription.resume();
     await subscription.cancel();
+  });
+
+  test('completes close after a malformed terminal event', () async {
+    _protocolCloseCalls = 0;
+    _protocolDiscardCalls = 0;
+    final port = ReceivePort();
+    final state = FfiPtySessionState(
+      handle: Pointer<native.PtySession>.fromAddress(1),
+      bindings: native.FlutterPtyBindings.fromLookup(_protocolLookup),
+    );
+    final pump = NativeEventPump(port)..attach(state);
+
+    final closed = state.closed;
+    port.sendPort.send(<Object?>[999]);
+    port.sendPort.send(<Object?>[10, 'unexpected']);
+
+    await closed;
+    expect(_protocolCloseCalls, 1);
+    expect(_protocolDiscardCalls, 1);
+    await pump.close();
   });
 }
 

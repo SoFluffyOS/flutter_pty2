@@ -19,6 +19,21 @@ void main() {
     expect(handler.events, hasLength(1));
     expect(handler.events.single, isA<NativeWritable>());
     expect(handler.errors, hasLength(1));
+    expect(handler.terminalErrors, <bool>[false]);
+    await pump.close();
+  });
+
+  test('marks a malformed terminal event as session closure', () async {
+    final port = ReceivePort();
+    final handler = _RecordingHandler();
+    final pump = NativeEventPump(port);
+    pump.attach(handler);
+
+    port.sendPort.send(<Object?>[10, 'unexpected']);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(handler.errors, hasLength(1));
+    expect(handler.terminalErrors, <bool>[true]);
     await pump.close();
   });
 
@@ -55,6 +70,7 @@ void main() {
 final class _RecordingHandler implements NativeEventHandler {
   final events = <NativeEvent>[];
   final errors = <String>[];
+  final terminalErrors = <bool>[];
 
   @override
   void handleNativeEvent(NativeEvent event) {
@@ -62,7 +78,8 @@ final class _RecordingHandler implements NativeEventHandler {
   }
 
   @override
-  void handleProtocolError(String message) {
+  void handleProtocolError(String message, {bool sessionClosed = false}) {
     errors.add(message);
+    terminalErrors.add(sessionClosed);
   }
 }

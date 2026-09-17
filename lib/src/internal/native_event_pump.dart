@@ -6,7 +6,7 @@ import 'package:flutter_pty2/src/internal/native_event.dart';
 abstract interface class NativeEventHandler {
   void handleNativeEvent(NativeEvent event);
 
-  void handleProtocolError(String message);
+  void handleProtocolError(String message, {bool sessionClosed = false});
 }
 
 final class NativeEventPump {
@@ -56,8 +56,16 @@ final class NativeEventPump {
     try {
       return NativeEvent.parse(message);
     } on FormatException catch (error) {
-      _handler?.handleProtocolError(error.message);
+      _handler?.handleProtocolError(
+        error.message,
+        sessionClosed: _isSessionClosedEvent(message),
+      );
       return null;
     }
+  }
+
+  bool _isSessionClosedEvent(Object? message) {
+    if (message is! List<Object?> || message.isEmpty) return false;
+    return message[0] == 10;
   }
 }

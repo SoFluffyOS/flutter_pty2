@@ -132,8 +132,13 @@ final class FfiPtySessionState implements NativeEventHandler {
   }
 
   @override
-  void handleProtocolError(String message) {
-    if (_protocolFailed) return;
+  void handleProtocolError(String message, {bool sessionClosed = false}) {
+    if (_protocolFailed) {
+      if (sessionClosed && !_closedCompleter.isCompleted) {
+        _closedCompleter.complete();
+      }
+      return;
+    }
     _protocolFailed = true;
     final error = StateError(message);
     if (!_spawnCompleter.isCompleted) _spawnCompleter.completeError(error);
@@ -143,6 +148,9 @@ final class FfiPtySessionState implements NativeEventHandler {
     if (!_doneCompleter.isCompleted) _doneCompleter.completeError(error);
     _input.handleClosed(error);
     _output.closeAndDiscard();
+    if (sessionClosed && !_closedCompleter.isCompleted) {
+      _closedCompleter.complete();
+    }
     bindings.pty_session_begin_close(handle);
   }
 
