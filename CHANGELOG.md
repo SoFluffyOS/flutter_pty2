@@ -80,6 +80,8 @@
   concurrency benchmarks.
 * Avoid signaling reaped Unix process IDs and make Windows termination and
   spawn failures idempotent and typed.
+* Fall back to direct Windows process termination if Job Object termination
+  fails during asynchronous close.
 * Align the minimum Flutter SDK constraint with the Dart 3 implementation.
 * Preserve buffered Unix output when a child exits during read backpressure.
 * Add Swift Package Manager support for iOS and macOS.
