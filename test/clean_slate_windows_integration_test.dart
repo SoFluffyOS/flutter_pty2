@@ -171,6 +171,31 @@ void main() {
   );
 
   test(
+    'closes cleanly while ConPTY input is queued',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['slow-input', '10'],
+          inputBufferBytes: 64 * 1024,
+        ),
+      );
+      final bytes = Uint8List(64 * 1024);
+      final writes = <Future<void>>[
+        for (var index = 0; index < 16; index++)
+          session.input.write(bytes).catchError((_) {}),
+      ];
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      await session.close().timeout(const Duration(seconds: 5));
+      await Future.wait(writes);
+    },
+    skip: skipReason,
+  );
+
+  test(
     'pausing output resumes a bounded ConPTY flood',
     () async {
       final child = fixture;
