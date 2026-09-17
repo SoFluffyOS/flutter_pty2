@@ -33,6 +33,9 @@ void main() {
       expect(results[0], Uint8List.fromList('fixture-sentinel'.codeUnits));
       expect(results[2], 37);
     },
-    skip: hasFixture ? null : 'Set PTY_TEST_CHILD to run fixture tests.',
+    skip: switch (hasFixture) {
+      true => null,
+      _ => 'Set PTY_TEST_CHILD to run fixture tests.',
+    },
   );
 }
