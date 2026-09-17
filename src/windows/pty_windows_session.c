@@ -31,9 +31,10 @@ typedef struct PtyWindowsOwnedOptions {
  * bootstrap before publication and remain stable until final teardown. Worker
  * handles and started flags are bootstrap-owned and are read during teardown
  * only after the corresponding worker has stopped. The write queue owns its
- * own mutex for chunk links and byte counts. session->output_credit is
- * protected by this platform mutex. No platform mutex is held while a Dart
- * event is posted.
+ * own mutex for chunk links and byte counts; whenever both mutexes are needed,
+ * the platform mutex is acquired first. session->output_credit is protected
+ * by this platform mutex. No platform mutex is held while a Dart event is
+ * posted.
  */
 typedef struct PtyWindowsPlatform {
     CRITICAL_SECTION mutex;
@@ -266,12 +267,12 @@ static void windows_mark_input_closed(PtySession *session,
 static void windows_discard_pending_writes(PtyWindowsPlatform *platform)
 {
     if (platform == NULL) return;
+    EnterCriticalSection(&platform->mutex);
     while (true) {
         PtyWriteChunk *chunk = pty_write_queue_dequeue(&platform->write_queue);
         if (chunk == NULL) break;
         pty_write_chunk_free(chunk);
     }
-    EnterCriticalSection(&platform->mutex);
     platform->write_backpressured = 0;
     LeaveCriticalSection(&platform->mutex);
 }
