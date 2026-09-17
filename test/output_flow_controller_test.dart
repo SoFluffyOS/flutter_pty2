@@ -131,4 +131,21 @@ void main() {
     expect(acknowledgements, isEmpty);
     expect(discardCount, 1);
   });
+
+  test('acknowledges and drops output received after native close', () async {
+    final acknowledgements = <int>[];
+    final controller = OutputFlowController(
+      acknowledge: acknowledgements.add,
+      discardOutput: () {},
+    );
+    final subscription = controller.stream.listen((_) {
+      fail('output received after native close');
+    });
+
+    controller.handleNativeClosed();
+    controller.addNativeOutput(Uint8List.fromList([5]));
+    await subscription.cancel();
+
+    expect(acknowledgements, [1]);
+  });
 }

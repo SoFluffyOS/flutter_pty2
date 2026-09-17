@@ -45,7 +45,7 @@ final class OutputFlowController {
   }
 
   void addNativeOutput(Uint8List bytes) {
-    if (_cancelled) {
+    if (_cancelled || _nativeClosed) {
       _acknowledge(bytes.length);
       return;
     }
