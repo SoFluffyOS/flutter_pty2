@@ -20,6 +20,9 @@ Flutter FFI pseudo-terminal plugin for spawning and controlling terminal process
   s.dependency 'FlutterMacOS'
 
   s.platform = :osx, '10.15'
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
+  s.pod_target_xcconfig = {
+    'DEFINES_MODULE' => 'YES',
+    'GCC_PREPROCESSOR_DEFINITIONS' => 'DART_SHARED_LIB=1'
+  }
   s.swift_version = '5.0'
 end

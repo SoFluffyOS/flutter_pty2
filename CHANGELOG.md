@@ -1,5 +1,6 @@
 ## (Unreleased)
 
+* Export the Dart dynamic-link API symbols from Apple CocoaPods builds.
 * Request native shutdown when a fatal asynchronous I/O error reaches Dart.
 * Request native shutdown when a synchronous native input write fails.
 * Prevent unobserved sibling lifecycle futures from reporting duplicate errors.

@@ -21,6 +21,10 @@ Flutter FFI pseudo-terminal plugin for spawning and controlling terminal process
   s.platform = :ios, '13.0'
 
   # Flutter.framework does not contain a i386 slice.
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
+  s.pod_target_xcconfig = {
+    'DEFINES_MODULE' => 'YES',
+    'GCC_PREPROCESSOR_DEFINITIONS' => 'DART_SHARED_LIB=1',
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386'
+  }
   s.swift_version = '5.0'
 end
