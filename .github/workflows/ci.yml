@@ -76,7 +76,7 @@ jobs:
           if ($null -eq $fixture) { throw 'pty_test_child.exe was not built' }
           $env:PTY_TEST_CHILD_WINDOWS = $fixture.FullName
           $env:PATH = "$($library.DirectoryName);$env:PATH"
-          ctest --test-dir build --output-on-failure
+          ctest --test-dir build -C Release --output-on-failure
 
       - name: Run tests
         run: flutter test
