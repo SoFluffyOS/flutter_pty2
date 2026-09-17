@@ -90,10 +90,11 @@ legacy manual-acknowledgement semantics and is not the 2.0 API.
 
 Unix has the native async session, bounded input queue, output credits,
 structured errors, and lifecycle stress coverage. Windows has the ConPTY,
-Job Object, and worker implementation plus a host smoke test, but requires
-runtime verification on Windows. Android has an `arm64-v8a` NDK build path and
-has passed the clean-slate output and input integration subset on an API 35
-emulator. iOS clean-slate runtime support is not yet claimed.
+Job Object, worker implementation, and scheduled native/integration stress
+coverage, but requires runtime verification on Windows. Android has an
+`arm64-v8a` NDK build path and has passed the clean-slate output and input
+integration subset on an API 35 emulator. iOS clean-slate runtime support is
+not yet claimed.
 
 ---
 

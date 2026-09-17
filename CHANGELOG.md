@@ -37,6 +37,7 @@
 * Run the native-finalizer fallback test on Windows.
 * Cover fragmented binary input writes in the Windows integration suite.
 * Cover `tryWrite` and `flush` in the Windows integration suite.
+* Document the expanded Windows scheduled verification scope.
 * Make Windows discard output natively after the Dart consumer cancels.
 * Avoid reporting normal Windows ConPTY EOF as an asynchronous I/O error.
 * Reject native writes as soon as session shutdown begins.
