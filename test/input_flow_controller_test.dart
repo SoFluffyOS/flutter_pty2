@@ -118,6 +118,30 @@ void main() {
     await Future<void>.delayed(Duration.zero);
   });
 
+  test('remembers a closed result without retrying native writes', () async {
+    var nativeCalls = 0;
+    final input = InputFlowController(
+      nativeTryWrite: (_, __) {
+        nativeCalls++;
+        return PtyWriteResult.closed;
+      },
+    );
+
+    expect(
+      input.tryWrite(Uint8List.fromList([1])),
+      PtyWriteResult.closed,
+    );
+    expect(
+      input.tryWrite(Uint8List.fromList([2])),
+      PtyWriteResult.closed,
+    );
+    expect(nativeCalls, 1);
+    await expectLater(
+      input.write(Uint8List.fromList([3])),
+      throwsA(isA<PtyClosedException>()),
+    );
+  });
+
   test('tryWrite rejects buffers larger than one native request', () {
     final input = InputFlowController(
       maxChunkSize: 2,
