@@ -26,6 +26,7 @@ let package = Package(
             publicHeadersPath: "include",
             cSettings: [
                 .define("DART_SHARED_LIB"),
+                .define("FLUTTER_PTY2_INCLUDE_COMMON_SOURCES"),
                 .headerSearchPath("include/flutter_pty2")
             ]
         )

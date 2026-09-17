@@ -75,6 +75,19 @@ jobs:
           -fsyntax-only
           ios/flutter_pty2/Sources/flutter_pty2/flutter_pty.c
 
+      - name: Verify Apple public headers
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          diff -u src/flutter_pty.h <(tail -n +2 ios/flutter_pty2/Sources/flutter_pty2/include/flutter_pty2/flutter_pty.h)
+          diff -u src/flutter_pty.h <(tail -n +2 macos/flutter_pty2/Sources/flutter_pty2/include/flutter_pty2/flutter_pty.h)
+
+      - name: Lint Apple podspecs
+        if: runner.os == 'macOS'
+        run: |
+          pod lib lint ios/flutter_pty2.podspec --allow-warnings --skip-tests
+          pod lib lint macos/flutter_pty2.podspec --allow-warnings --skip-tests
+
       - name: Run native tests
         if: runner.os != 'Windows'
         env:

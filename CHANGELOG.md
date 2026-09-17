@@ -41,6 +41,9 @@
 * Cover Windows close idempotency with queued input and kill during output.
 * Serialize Windows resize and kill against native session shutdown.
 * Keep the iOS native forwarder compilable under strict SDK feature macros.
+* Compile shared native sources in Apple CocoaPods and Swift Package Manager
+  builds.
+* Validate Apple public-header synchronization and podspec packaging in CI.
 * Retain Unix session platforms across reactor startup failures and close races.
 * Preserve close-worker ownership across concurrent startup failure cleanup.
 * Document the expanded Windows scheduled verification scope.

@@ -13,8 +13,7 @@ Flutter FFI pseudo-terminal plugin for spawning and controlling terminal process
   s.license          = { :type => 'MIT', :file => '../LICENSE' }
   s.author           = { 'SoFluffy' => 'hi@sofluffy.io' }
 
-  # The forwarder C file imports the shared sources from `../src/*` so both
-  # CocoaPods and Swift Package Manager build the same implementation.
+  # The forwarder C file imports the shared implementation from `../src/*`.
   s.source           = { :path => '.' }
   s.source_files = 'flutter_pty2/Sources/flutter_pty2/**/*'
   s.dependency 'Flutter'
@@ -23,7 +22,10 @@ Flutter FFI pseudo-terminal plugin for spawning and controlling terminal process
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
-    'GCC_PREPROCESSOR_DEFINITIONS' => 'DART_SHARED_LIB=1',
+    'GCC_PREPROCESSOR_DEFINITIONS' => [
+      'DART_SHARED_LIB=1',
+      'FLUTTER_PTY2_INCLUDE_COMMON_SOURCES=1'
+    ],
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386'
   }
   s.swift_version = '5.0'
