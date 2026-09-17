@@ -12,6 +12,8 @@ typedef struct SessionEvents {
     pthread_cond_t condition;
     int spawned;
     int write_complete;
+    int writable;
+    int writable_before_write_complete;
     int output_closed;
     int process_exit;
     int session_closed;
@@ -25,17 +27,21 @@ static SessionEvents events = {
     .condition = PTHREAD_COND_INITIALIZER,
 };
 static PtySession *active_session;
+static int allow_signal_exit;
 
 static void reset_events(void)
 {
     pthread_mutex_lock(&events.mutex);
     events.spawned = 0;
     events.write_complete = 0;
+    events.writable = 0;
+    events.writable_before_write_complete = 0;
     events.output_closed = 0;
     events.process_exit = 0;
     events.session_closed = 0;
     events.exit_code = 0;
     events.output_length = 0;
+    allow_signal_exit = 0;
     pthread_mutex_unlock(&events.mutex);
 }
 
@@ -79,12 +85,16 @@ static bool post_object(Dart_Port_DL port, Dart_CObject *message)
     case PTY_EVENT_WRITE_COMPLETE:
         events.write_complete = 1;
         break;
+    case PTY_EVENT_WRITABLE:
+        events.writable = 1;
+        if (!events.write_complete) events.writable_before_write_complete = 1;
+        break;
     case PTY_EVENT_OUTPUT_CLOSED:
         events.output_closed = 1;
         break;
     case PTY_EVENT_PROCESS_EXIT:
         events.process_exit = 1;
-        assert(values[1]->value.as_int32 == 0);
+        if (!allow_signal_exit) assert(values[1]->value.as_int32 == 0);
         events.exit_code = (int)values[2]->value.as_int64;
         break;
     case PTY_EVENT_SESSION_CLOSED:
@@ -146,6 +156,22 @@ static int wait_for_write_complete(void)
     const struct timespec deadline = deadline_after_seconds(5);
     pthread_mutex_lock(&events.mutex);
     while (!events.write_complete) {
+        if (pthread_cond_timedwait(&events.condition,
+                                   &events.mutex,
+                                   &deadline) != 0) {
+            pthread_mutex_unlock(&events.mutex);
+            return 0;
+        }
+    }
+    pthread_mutex_unlock(&events.mutex);
+    return 1;
+}
+
+static int wait_for_writable(void)
+{
+    const struct timespec deadline = deadline_after_seconds(5);
+    pthread_mutex_lock(&events.mutex);
+    while (!events.writable) {
         if (pthread_cond_timedwait(&events.condition,
                                    &events.mutex,
                                    &deadline) != 0) {
@@ -221,6 +247,50 @@ int main(void)
         if (pthread_cond_timedwait(&events.condition,
                                    &events.mutex,
                                    &deadline) != 0) {
+            pthread_mutex_unlock(&events.mutex);
+            return 1;
+        }
+    }
+    pthread_mutex_unlock(&events.mutex);
+    pty_session_release(session);
+    active_session = NULL;
+
+    reset_events();
+    pthread_mutex_lock(&events.mutex);
+    allow_signal_exit = 1;
+    pthread_mutex_unlock(&events.mutex);
+    const char *backpressure_arguments[] = {
+        "-c",
+        "sleep 1; cat >/dev/null",
+    };
+    PtySpawnOptions backpressure_options = options;
+    backpressure_options.arguments = backpressure_arguments;
+    backpressure_options.input_buffer_bytes = 64 * 1024;
+    assert(pty_session_start(&backpressure_options, &session, &error) == 1);
+    assert(session != NULL);
+    active_session = session;
+    assert(wait_for_spawn());
+    uint8_t large_input[64 * 1024] = {0};
+    assert(pty_session_try_write(session,
+                                 43,
+                                 large_input,
+                                 sizeof(large_input),
+                                 &error) == PTY_WRITE_ACCEPTED);
+    assert(pty_session_try_write(session, 44, &byte, 1, &error) ==
+           PTY_WRITE_BACKPRESSURED);
+    assert(wait_for_writable());
+    assert(wait_for_write_complete());
+    pthread_mutex_lock(&events.mutex);
+    assert(events.writable == 1);
+    assert(events.writable_before_write_complete == 1);
+    pthread_mutex_unlock(&events.mutex);
+    pty_session_begin_close(session);
+    const struct timespec backpressure_deadline = deadline_after_seconds(5);
+    pthread_mutex_lock(&events.mutex);
+    while (!events.session_closed) {
+        if (pthread_cond_timedwait(&events.condition,
+                                   &events.mutex,
+                                   &backpressure_deadline) != 0) {
             pthread_mutex_unlock(&events.mutex);
             return 1;
         }

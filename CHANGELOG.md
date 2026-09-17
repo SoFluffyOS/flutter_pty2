@@ -58,6 +58,8 @@
 * Validate terminal dimensions in the native ABI before platform-specific casts.
 * Keep PTY output available after an input-channel failure and release queued
   native writes immediately.
+* Notify Unix input backpressure waiters when a partial write reaches the
+  writable low-water mark.
 * Close sessions safely when shutdown races native startup publication.
 * Publish the native platform backend atomically across startup-close races.
 * Avoid cross-thread `errno` handoff during concurrent Unix spawns.

@@ -233,6 +233,25 @@ static void discard_pending_writes(PtyUnixPlatform *platform)
     }
 }
 
+static void maybe_post_writable(PtySession *session)
+{
+    PtyUnixPlatform *platform = platform_for(session);
+    if (platform == NULL) return;
+    int should_post = 0;
+    pthread_mutex_lock(&platform->mutex);
+    if (platform->write_backpressured &&
+        pty_write_queue_pending_bytes(&platform->write_queue) <=
+            session->input_buffer_limit / 2) {
+        platform->write_backpressured = 0;
+        should_post = 1;
+    }
+    pthread_mutex_unlock(&platform->mutex);
+    if (!should_post) return;
+    post_session_event(
+        session,
+        pty_post_simple_event(session->event_port, PTY_EVENT_WRITABLE));
+}
+
 static void close_slave(PtyUnixPlatform *platform)
 {
     if (platform == NULL) return;
@@ -275,6 +294,7 @@ static int pty_unix_flush_write_queue(PtySession *session)
                     mark_input_closed(session, &error);
                     return 0;
                 }
+                maybe_post_writable(session);
                 return 1;
             }
             const int error_number = errno;
@@ -288,20 +308,7 @@ static int pty_unix_flush_write_queue(PtySession *session)
         post_session_event(
             session,
             pty_post_write_complete(session->event_port, chunk->request_id));
-        int should_post_writable = 0;
-        pthread_mutex_lock(&platform->mutex);
-        if (platform->write_backpressured &&
-            pty_write_queue_pending_bytes(&platform->write_queue) <=
-                session->input_buffer_limit / 2) {
-            platform->write_backpressured = 0;
-            should_post_writable = 1;
-        }
-        pthread_mutex_unlock(&platform->mutex);
-        if (should_post_writable) {
-            post_session_event(
-                session,
-                pty_post_simple_event(session->event_port, PTY_EVENT_WRITABLE));
-        }
+        maybe_post_writable(session);
         pty_write_chunk_free(chunk);
     }
 }
