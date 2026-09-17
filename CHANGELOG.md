@@ -18,6 +18,7 @@
   native writes immediately.
 * Close sessions safely when shutdown races native startup publication.
 * Publish the native platform backend atomically across startup-close races.
+* Avoid cross-thread `errno` handoff during concurrent Unix spawns.
 * Return typed invalid-argument errors for malformed native input writes.
 * Drop Unix output read concurrently canceled by the Dart consumer.
 * Preserve typed working-directory errors before relative executable lookup.

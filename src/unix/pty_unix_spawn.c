@@ -89,13 +89,13 @@ static pthread_mutex_t pty_open_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int pty_open_serialized(int *master_fd,
                                int *slave_fd,
-                               const struct winsize *window)
+                               const struct winsize *window,
+                               int *error_number)
 {
     pthread_mutex_lock(&pty_open_mutex);
     const int result = pty_open(master_fd, slave_fd, window);
-    const int error_number = errno;
+    if (error_number != NULL) *error_number = errno;
     pthread_mutex_unlock(&pty_open_mutex);
-    if (result != 0) errno = error_number;
     return result;
 }
 
@@ -414,17 +414,16 @@ static char *resolve_executable(const PtySpawnOptions *options,
     return NULL;
 }
 
-static int move_fd_above(int fd, int minimum)
+static int move_fd_above(int fd, int minimum, int *error_number)
 {
     if (fd >= minimum) return fd;
     const int moved = fcntl(fd, F_DUPFD_CLOEXEC, minimum);
     if (moved < 0) {
+        if (error_number != NULL) *error_number = errno;
         close(fd);
         return -1;
     }
-    const int error_number = errno;
     close(fd);
-    errno = error_number;
     return moved;
 }
 
@@ -599,8 +598,12 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     };
     int master = -1;
     int slave = -1;
-    if (pty_open_serialized(&master, &slave, &window) != 0) {
-        pty_error_set_errno(error, PTY_ERROR_SPAWN_FAILED, errno, "openpty failed");
+    int open_error = 0;
+    if (pty_open_serialized(&master, &slave, &window, &open_error) != 0) {
+        pty_error_set_errno(error,
+                            PTY_ERROR_SPAWN_FAILED,
+                            open_error,
+                            "openpty failed");
         free_string_vector(argv, options->argument_count + 1);
         free_string_vector(envp, options->environment_count);
         free(resolved_executable);
@@ -641,10 +644,11 @@ int pty_unix_spawn(const PtySpawnOptions *options,
         return 0;
     }
 
-    master = move_fd_above(master, PTY_CHILD_STATUS_FD + 1);
-    slave = move_fd_above(slave, PTY_CHILD_STATUS_FD + 1);
+    int descriptor_error = 0;
+    master = move_fd_above(master, PTY_CHILD_STATUS_FD + 1, &descriptor_error);
+    slave = move_fd_above(slave, PTY_CHILD_STATUS_FD + 1, &descriptor_error);
     if (master < 0 || slave < 0) {
-        const int error_number = errno;
+        const int error_number = descriptor_error == 0 ? EIO : descriptor_error;
         if (master >= 0) close(master);
         if (slave >= 0) close(slave);
         free_string_vector(argv, options->argument_count + 1);
@@ -681,9 +685,12 @@ int pty_unix_spawn(const PtySpawnOptions *options,
                             "configuring exec status pipe failed");
         return 0;
     }
-    status_pipe[0] = move_fd_above(status_pipe[0], PTY_CHILD_STATUS_FD + 1);
+    descriptor_error = 0;
+    status_pipe[0] = move_fd_above(status_pipe[0],
+                                   PTY_CHILD_STATUS_FD + 1,
+                                   &descriptor_error);
     if (status_pipe[0] < 0) {
-        const int error_number = errno;
+        const int error_number = descriptor_error == 0 ? EIO : descriptor_error;
         close(status_pipe[1]);
         cleanup_failed_child(-1, master);
         close(slave);
