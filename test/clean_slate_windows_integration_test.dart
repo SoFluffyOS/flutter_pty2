@@ -208,6 +208,38 @@ void main() {
   );
 
   test(
+    'preserves many tiny binary writes through ConPTY',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final expected = Uint8List.fromList([
+        for (var index = 0; index < 4096; index++) index % 251,
+      ]);
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: ['copy-input', '${expected.length}'],
+        ),
+      );
+      final outputFuture = session.output.toList();
+      try {
+        for (final byte in expected) {
+          await session.input.write(Uint8List.fromList([byte]));
+        }
+        final exit = await session.done;
+        final output = await outputFuture;
+
+        expect(exit, isA<PtyExitCode>());
+        if (exit case PtyExitCode(:final code)) expect(code, 0);
+        expect(output.expand((chunk) => chunk).toList(), expected);
+      } finally {
+        await session.close();
+      }
+    },
+    skip: skipReason,
+  );
+
+  test(
     'keeps trailing ConPTY output available after process exit until done',
     () async {
       final child = fixture;
