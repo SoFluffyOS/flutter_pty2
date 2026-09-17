@@ -90,8 +90,8 @@
 //       }
 //       if (data is _SumResponse) {
 //         // The helper isolate sent us a response to a request we sent.
-//         final Completer<int> completer = _sumRequests[data.id]!;
-//         _sumRequests.remove(data.id);
+//         final Completer<int>? completer = _sumRequests.remove(data.id);
+//         if (completer == null) return;
 //         completer.complete(data.result);
 //         return;
 //       }
