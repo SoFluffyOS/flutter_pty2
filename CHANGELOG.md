@@ -7,6 +7,8 @@
   focused native and Dart drivers.
 * Propagate early asynchronous native failures to spawn, process-exit, done,
   and pending-input futures.
+* Fail closed and request native shutdown when the clean-slate event protocol is
+  malformed.
 * Treat failed native event delivery as Dart endpoint abandonment and release
   the session owner exactly once.
 * Skip subsequent native event posts after a session has been abandoned.
