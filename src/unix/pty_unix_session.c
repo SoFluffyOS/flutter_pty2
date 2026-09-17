@@ -330,12 +330,16 @@ static int read_output(PtySession *session)
     if (result > 0) {
         if (!discard) {
             pthread_mutex_lock(&platform->mutex);
-            if (session->output_credit >= (uint64_t)result) {
-                session->output_credit -= (uint64_t)result;
-            } else {
-                session->output_credit = 0;
+            const int discard_after_read = platform->discard_output;
+            if (!discard_after_read) {
+                if (session->output_credit >= (uint64_t)result) {
+                    session->output_credit -= (uint64_t)result;
+                } else {
+                    session->output_credit = 0;
+                }
             }
             pthread_mutex_unlock(&platform->mutex);
+            if (discard_after_read) return PTY_READ_DATA;
             if (!post_session_event(
                     session,
                     pty_post_output(session->event_port, buffer, result))) {

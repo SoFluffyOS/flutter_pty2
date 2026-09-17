@@ -26,6 +26,19 @@ static SessionEvents events = {
 };
 static PtySession *active_session;
 
+static void reset_events(void)
+{
+    pthread_mutex_lock(&events.mutex);
+    events.spawned = 0;
+    events.write_complete = 0;
+    events.output_closed = 0;
+    events.process_exit = 0;
+    events.session_closed = 0;
+    events.exit_code = 0;
+    events.output_length = 0;
+    pthread_mutex_unlock(&events.mutex);
+}
+
 static int contains_bytes(const char *bytes,
                           size_t length,
                           const char *needle,
@@ -214,5 +227,37 @@ int main(void)
     }
     pthread_mutex_unlock(&events.mutex);
     pty_session_release(session);
+    active_session = NULL;
+
+    reset_events();
+    const char *discard_arguments[] = {
+        "-c",
+        "sleep 1; printf discard-output; exit 0",
+    };
+    PtySpawnOptions discard_options = options;
+    discard_options.arguments = discard_arguments;
+    assert(pty_session_start(&discard_options, &session, &error) == 1);
+    assert(session != NULL);
+    active_session = session;
+    assert(wait_for_spawn());
+    pty_session_discard_output(session);
+    assert(wait_for_process_and_output());
+    pthread_mutex_lock(&events.mutex);
+    assert(events.output_length == 0);
+    pthread_mutex_unlock(&events.mutex);
+    pty_session_begin_close(session);
+    const struct timespec discard_deadline = deadline_after_seconds(5);
+    pthread_mutex_lock(&events.mutex);
+    while (!events.session_closed) {
+        if (pthread_cond_timedwait(&events.condition,
+                                   &events.mutex,
+                                   &discard_deadline) != 0) {
+            pthread_mutex_unlock(&events.mutex);
+            return 1;
+        }
+    }
+    pthread_mutex_unlock(&events.mutex);
+    pty_session_release(session);
+    active_session = NULL;
     return 0;
 }
