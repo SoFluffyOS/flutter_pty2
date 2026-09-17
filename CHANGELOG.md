@@ -30,6 +30,7 @@
 * Skip subsequent native event posts after a session has been abandoned.
 * Add an example-app Android integration harness and run it on the emulator in
   native-quality CI.
+* Build both Android arm64-v8a and x86_64 native targets in native-quality CI.
 * Verify clean-slate Android output and input integration on an API 35 emulator.
 * Add scheduled macOS AddressSanitizer and UndefinedBehaviorSanitizer coverage.
 * Add scheduled Windows runtime, stress, and large-transfer coverage.

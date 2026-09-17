@@ -92,10 +92,11 @@ Unix has the native async session, bounded input queue, output credits,
 structured errors, and lifecycle stress coverage. Windows has the ConPTY,
 Job Object, worker implementation, and scheduled native/integration stress
 coverage, but requires runtime verification on Windows. Android has an
-`arm64-v8a` NDK build path and has passed the clean-slate output and input
-integration subset on an API 35 emulator. iOS has passed the clean-slate
-output and input integration subset on an iPhone simulator; physical-device
-runtime verification is still required before claiming production iOS support.
+`arm64-v8a` and `x86_64` NDK build paths and has passed the clean-slate output
+and input integration subset on an API 35 emulator. iOS has passed the
+clean-slate output and input integration subset on an iPhone simulator;
+physical-device runtime verification is still required before claiming
+production iOS support.
 
 ---
 
