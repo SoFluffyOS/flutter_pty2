@@ -15,19 +15,31 @@ final class NativeEventPump {
   final ReceivePort _port;
   StreamSubscription<dynamic>? _subscription;
   NativeEventHandler? _handler;
+  Future<void>? _closeFuture;
+  bool _closed = false;
 
   void attach(NativeEventHandler handler) {
-    if (_subscription != null) {
+    if (_subscription != null || _closed) {
       throw StateError('Native event pump is already attached');
     }
     _handler = handler;
     _subscription = _port.listen(_handleMessage);
   }
 
-  Future<void> close() async {
-    await _subscription?.cancel();
+  Future<void> close() {
+    final existing = _closeFuture;
+    if (existing != null) return existing;
+    final closeFuture = _close();
+    _closeFuture = closeFuture;
+    return closeFuture;
+  }
+
+  Future<void> _close() async {
+    _closed = true;
+    final subscription = _subscription;
     _subscription = null;
     _handler = null;
+    await subscription?.cancel();
     _port.close();
   }
 

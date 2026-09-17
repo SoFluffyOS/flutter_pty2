@@ -33,6 +33,23 @@ void main() {
     );
     port.close();
   });
+
+  test('close is idempotent when session closure races explicit cleanup',
+      () async {
+    final port = ReceivePort();
+    final pump = NativeEventPump(port);
+    pump.attach(_RecordingHandler());
+
+    final firstClose = pump.close();
+    final secondClose = pump.close();
+
+    expect(identical(firstClose, secondClose), isTrue);
+    await Future.wait([firstClose, secondClose]);
+    expect(
+      () => pump.attach(_RecordingHandler()),
+      throwsStateError,
+    );
+  });
 }
 
 final class _RecordingHandler implements NativeEventHandler {
