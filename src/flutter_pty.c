@@ -4,6 +4,7 @@
 
 #if _WIN32
 #include "flutter_pty_win.c"
+#include "windows/pty_windows_spawn.c"
 #include "windows/pty_windows_session.c"
 #else
 #include "forkpty.c"
