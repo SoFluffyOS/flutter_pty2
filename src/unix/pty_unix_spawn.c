@@ -445,7 +445,7 @@ static int max_open_fd(void)
 static void child_report_error(int fd, PtyChildStage stage, int error_number)
 {
     const PtyChildError error = {
-        .stage = stage,
+        .stage = (int32_t)stage,
         .error_number = error_number,
     };
     const uint8_t *data = (const uint8_t *)&error;

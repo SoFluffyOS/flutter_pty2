@@ -20,8 +20,8 @@ void pty_error_set(PtyError *error,
                    const char *message)
 {
     if (error == NULL) return;
-    error->domain = domain;
-    error->kind = kind;
+    error->domain = (int32_t)domain;
+    error->kind = (int32_t)kind;
     error->os_code = os_code;
     if (message == NULL) {
         error->message[0] = '\0';

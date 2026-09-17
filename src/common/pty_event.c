@@ -30,7 +30,7 @@ static bool post_array(Dart_Port_DL port, Dart_CObject **values, intptr_t length
 bool pty_post_simple_event(Dart_Port_DL port, PtyEventType event_type)
 {
     Dart_CObject type;
-    set_int32(&type, event_type);
+    set_int32(&type, (int32_t)event_type);
     Dart_CObject *values[] = {&type};
     return post_array(port, values, 1);
 }
