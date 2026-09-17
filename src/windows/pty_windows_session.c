@@ -263,6 +263,19 @@ static void windows_mark_input_closed(PtySession *session,
                        pty_post_input_closed(session->event_port, error));
 }
 
+static void windows_discard_pending_writes(PtyWindowsPlatform *platform)
+{
+    if (platform == NULL) return;
+    while (true) {
+        PtyWriteChunk *chunk = pty_write_queue_dequeue(&platform->write_queue);
+        if (chunk == NULL) break;
+        pty_write_chunk_free(chunk);
+    }
+    EnterCriticalSection(&platform->mutex);
+    platform->write_backpressured = 0;
+    LeaveCriticalSection(&platform->mutex);
+}
+
 static void windows_maybe_post_closed(PtySession *session)
 {
     PtyWindowsPlatform *platform = windows_platform(session);
@@ -379,15 +392,21 @@ static DWORD WINAPI windows_writer(void *argument)
         if (chunk == NULL) continue;
         uint64_t offset = 0;
         int succeeded = 1;
+        DWORD failure_error = ERROR_WRITE_FAULT;
         while (offset < chunk->length) {
             DWORD written = 0;
             const DWORD requested = (DWORD)(chunk->length - offset);
-            if (!WriteFile(platform->input_write,
-                           chunk->bytes + offset,
-                           requested,
-                           &written,
-                           NULL) ||
-                written == 0) {
+            const BOOL write_succeeded = WriteFile(platform->input_write,
+                                                   chunk->bytes + offset,
+                                                   requested,
+                                                   &written,
+                                                   NULL);
+            if (!write_succeeded) {
+                failure_error = GetLastError();
+                succeeded = 0;
+                break;
+            }
+            if (written == 0) {
                 succeeded = 0;
                 break;
             }
@@ -417,13 +436,10 @@ static DWORD WINAPI windows_writer(void *argument)
             pty_error_set(&error,
                           PTY_ERROR_DOMAIN_WIN32,
                           PTY_ERROR_IO,
-                          GetLastError(),
+                          failure_error,
                           "writing ConPTY input failed");
             windows_mark_input_closed(session, &error);
-            EnterCriticalSection(&platform->mutex);
-            platform->stopping = 1;
-            WakeAllConditionVariable(&platform->condition);
-            LeaveCriticalSection(&platform->mutex);
+            windows_discard_pending_writes(platform);
         }
         pty_write_chunk_free(chunk);
         if (!succeeded) break;

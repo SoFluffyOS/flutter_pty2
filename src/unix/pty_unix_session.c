@@ -410,10 +410,12 @@ static void *reactor_worker(void *argument)
         }
         if ((descriptors[0].revents & POLLOUT) != 0 &&
             !pty_unix_flush_write_queue(session)) {
+            discard_pending_writes(platform);
             pthread_mutex_lock(&platform->mutex);
-            platform->stopping = 1;
+            const int stopping_after_write_failure = platform->stopping;
             pthread_mutex_unlock(&platform->mutex);
-            break;
+            if (stopping_after_write_failure) break;
+            continue;
         }
         int read_result = PTY_READ_EMPTY;
         int attempted_read = 0;
