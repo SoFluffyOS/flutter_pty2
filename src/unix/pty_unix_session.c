@@ -20,6 +20,7 @@
 
 #define PTY_REACTOR_BUFFER_SIZE (16 * 1024)
 #define PTY_WAKE_BUFFER_SIZE 64
+#define PTY_WAITER_POLL_TIMEOUT_MS 10
 
 typedef enum PtyReadResult {
     PTY_READ_CLOSED = 0,
@@ -468,12 +469,42 @@ static void *waiter_worker(void *argument)
     PtySession *session = argument;
     PtyUnixPlatform *platform = platform_for(session);
     int status = 0;
-    pid_t result;
-    do {
-        result = waitpid(platform->process_id, &status, 0);
-    } while (result < 0 && errno == EINTR);
+    pid_t result = 0;
+    int wait_error = 0;
+    while (true) {
+        pthread_mutex_lock(&platform->mutex);
+        result = waitpid(platform->process_id, &status, WNOHANG);
+        const int wait_errno = errno;
+        const int reactor_done = platform->reactor_done;
+        const int wake_fd = platform->wake_pipe[0];
+        if (result == platform->process_id) {
+            atomic_store_explicit(&session->process_exited,
+                                  1,
+                                  memory_order_release);
+        }
+        pthread_mutex_unlock(&platform->mutex);
+        if (result == platform->process_id) break;
+        if (result < 0 && wait_errno != EINTR) {
+            wait_error = wait_errno;
+            break;
+        }
+
+        struct pollfd descriptor = {
+            .fd = reactor_done ? -1 : wake_fd,
+            .events = POLLIN,
+        };
+        int poll_result;
+        do {
+            poll_result = poll(&descriptor,
+                               1,
+                               PTY_WAITER_POLL_TIMEOUT_MS);
+        } while (poll_result < 0 && errno == EINTR);
+        if (poll_result < 0) {
+            wait_error = errno;
+            break;
+        }
+    }
     if (result == platform->process_id) {
-        atomic_store_explicit(&session->process_exited, 1, memory_order_release);
         wake_reactor(platform);
         if (WIFEXITED(status)) {
             post_session_event(
@@ -488,9 +519,13 @@ static void *waiter_worker(void *argument)
                                       true,
                                       WTERMSIG(status)));
         }
-    } else if (result < 0) {
-        post_child_error(session, PTY_ERROR_IO, errno, "waiting for PTY process failed");
+    } else if (wait_error != 0) {
+        post_child_error(session,
+                         PTY_ERROR_IO,
+                         wait_error,
+                         "waiting for PTY process failed");
         atomic_store_explicit(&session->process_exited, 1, memory_order_release);
+        wake_reactor(platform);
     }
     pthread_mutex_lock(&platform->mutex);
     platform->waiter_done = 1;

@@ -20,6 +20,7 @@
 * Return typed invalid-argument errors for malformed native input writes.
 * Drop Unix output read concurrently canceled by the Dart consumer.
 * Preserve typed working-directory errors before relative executable lookup.
+* Serialize Unix process reaping with signals and termination requests.
 * Add native lifecycle, transfer, exit-drain, randomized race, finalizer, and
   platform resource-leak coverage, including scheduled 1 GiB transfers and
   10,000 randomized operations.
