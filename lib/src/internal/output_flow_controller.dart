@@ -24,8 +24,8 @@ final class OutputFlowController {
     );
   }
 
-  final void Function(int bytes) _acknowledge;
-  final void Function() _discardOutput;
+  void Function(int bytes) _acknowledge;
+  void Function() _discardOutput;
   final void Function()? _onDrained;
   Object? _owner;
   WeakReference<Object>? _ownerReference;
@@ -75,6 +75,8 @@ final class OutputFlowController {
       _acknowledge(_pending.removeFirst().length);
     }
     _discardOutput();
+    _acknowledge = (_) {};
+    _discardOutput = () {};
     _nativeClosed = true;
     _notifyDrained();
     if (!_controller.isClosed) unawaited(_controller.close());

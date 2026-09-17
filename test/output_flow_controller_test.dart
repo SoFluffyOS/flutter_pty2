@@ -114,4 +114,21 @@ void main() {
     expect(discarded, isTrue);
     await subscription.cancel();
   });
+
+  test('closeAndDiscard disarms callbacks after native release', () async {
+    final acknowledgements = <int>[];
+    var discardCount = 0;
+    final controller = OutputFlowController(
+      acknowledge: acknowledgements.add,
+      discardOutput: () => discardCount++,
+    );
+    final subscription = controller.stream.listen((_) {});
+
+    controller.closeAndDiscard();
+    controller.addNativeOutput(Uint8List.fromList([4]));
+    await subscription.cancel();
+
+    expect(acknowledgements, isEmpty);
+    expect(discardCount, 1);
+  });
 }
