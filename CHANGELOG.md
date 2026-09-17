@@ -9,6 +9,7 @@
   and pending-input futures.
 * Fail closed and request native shutdown when the clean-slate event protocol is
   malformed.
+* Preserve protocol failures when buffered output is still awaiting drain.
 * Treat failed native event delivery as Dart endpoint abandonment and release
   the session owner exactly once.
 * Skip subsequent native event posts after a session has been abandoned.
