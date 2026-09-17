@@ -760,8 +760,9 @@ static int windows_create_process(const PtySpawnOptions *options,
     }
     if (options->working_directory != NULL &&
         options->working_directory[0] != '\0') {
-        const DWORD attributes = GetFileAttributesW(working_directory);
-        if (attributes == INVALID_FILE_ATTRIBUTES) {
+        const DWORD working_directory_attributes =
+            GetFileAttributesW(working_directory);
+        if (working_directory_attributes == INVALID_FILE_ATTRIBUTES) {
             const DWORD error_code = GetLastError();
             pty_error_set(error,
                           PTY_ERROR_DOMAIN_WIN32,
@@ -770,7 +771,7 @@ static int windows_create_process(const PtySpawnOptions *options,
                           "checking Windows working directory failed");
             goto failure;
         }
-        if ((attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+        if ((working_directory_attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
             pty_error_set(error,
                           PTY_ERROR_DOMAIN_WIN32,
                           PTY_ERROR_WORKING_DIRECTORY,
