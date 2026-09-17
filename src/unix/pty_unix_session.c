@@ -265,8 +265,12 @@ static int pty_unix_flush_write_queue(PtySession *session)
                 if (pty_write_queue_requeue_front(&platform->write_queue,
                                                   chunk) != PTY_WRITE_ACCEPTED) {
                     pty_write_chunk_free(chunk);
-                    post_child_error(session, PTY_ERROR_IO, ENOBUFS,
-                                     "requeuing partial write failed");
+                    PtyError error;
+                    pty_error_set_errno(&error,
+                                        PTY_ERROR_IO,
+                                        ENOBUFS,
+                                        "requeuing partial write failed");
+                    mark_input_closed(session, &error);
                     return 0;
                 }
                 return 1;
