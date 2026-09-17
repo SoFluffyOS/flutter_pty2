@@ -362,6 +362,54 @@ void main() {
   );
 
   test(
+    'round-trips required binary transfer sizes without byte changes',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      const transferSizes = [
+        1,
+        16,
+        4 * 1024,
+        64 * 1024,
+        1024 * 1024,
+        10 * 1024 * 1024,
+      ];
+
+      for (final transferSize in transferSizes) {
+        final expected = Uint8List.fromList([
+          for (var index = 0; index < transferSize; index++) index & 0xff,
+        ]);
+        final session = await Pty.spawn(
+          PtySpawnOptions(
+            executable: child,
+            arguments: ['slow-copy-input', '$transferSize', '1'],
+          ),
+        );
+        try {
+          final outputFuture = session.output.toList();
+          for (var offset = 0; offset < expected.length;) {
+            final end = math.min(offset + 64 * 1024, expected.length);
+            await session.input.write(expected.sublist(offset, end));
+            offset = end;
+          }
+          final exit = await session.processExit.timeout(
+            const Duration(seconds: 30),
+          );
+          final output = await outputFuture;
+
+          expect(exit, isA<PtyExitCode>());
+          if (exit case PtyExitCode(:final code)) expect(code, 0);
+          expect(output.expand((chunk) => chunk).toList(), expected);
+        } finally {
+          await session.close();
+        }
+      }
+    },
+    skip: skipReason,
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test(
     'flushes an accepted tryWrite before process completion',
     () async {
       final child = fixture;
