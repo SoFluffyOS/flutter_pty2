@@ -153,7 +153,9 @@ errors; the original error remains available to every public future.
 Malformed native event messages are treated as a fatal protocol error: Dart
 fails the session futures, discards buffered output, closes input, and requests
 native shutdown. The event pump remains alive until the native session reports
-`SESSION_CLOSED`, so deterministic `close()` still completes normally.
+`SESSION_CLOSED`, so deterministic `close()` still completes normally. If a
+malformed message carries the `SESSION_CLOSED` event tag, the pump also marks
+the terminal wait complete because native shutdown has already finished.
 Capabilities are reported by the backend, so callers can distinguish POSIX
 signals, pixel dimensions, reliable process-tree cleanup, and ConPTY support
 without inferring behavior from the host platform.

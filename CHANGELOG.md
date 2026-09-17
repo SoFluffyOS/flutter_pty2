@@ -15,6 +15,7 @@
   and pending-input futures.
 * Fail closed and request native shutdown when the clean-slate event protocol is
   malformed.
+* Complete deterministic close when a malformed terminal event is received.
 * Preserve protocol failures when buffered output is still awaiting drain.
 * Complete inflight input futures when a later native write observes closure.
 * Preserve Unix native setup error codes when session initialization fails.
