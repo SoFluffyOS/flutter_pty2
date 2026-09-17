@@ -163,8 +163,10 @@ Capabilities are reported by the backend, so callers can distinguish POSIX
 signals, pixel dimensions, reliable process-tree cleanup, and ConPTY support
 without inferring behavior from the host platform.
 
-The clean-slate runtime is implemented for Linux, macOS, Windows, and Android
-build targets. Linux and macOS integration are covered locally and in CI, and
+The clean-slate runtime is implemented for Linux, macOS, Windows, Android, and
+iOS build targets. Linux and macOS integration are covered locally and in CI, and
 the Android output/input subset has been verified on an API 35 emulator.
-Windows runtime validation remains a release gate until it has run on a
-Windows target. iOS support is not claimed by this API yet.
+The iOS output/input subset has been verified on an iPhone simulator, but
+physical-device runtime validation is still required before claiming
+production iOS support. Windows runtime validation remains a release gate
+until it has run on a Windows target.

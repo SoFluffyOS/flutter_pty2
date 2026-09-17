@@ -44,6 +44,9 @@
 * Compile shared native sources in Apple CocoaPods and Swift Package Manager
   builds.
 * Validate Apple public-header synchronization and podspec packaging in CI.
+* Add an iOS example-app simulator integration harness for clean-slate output
+  and input coverage.
+* Run the iOS simulator integration harness in macOS pull-request CI.
 * Retain Unix session platforms across reactor startup failures and close races.
 * Preserve close-worker ownership across concurrent startup failure cleanup.
 * Document the expanded Windows scheduled verification scope.

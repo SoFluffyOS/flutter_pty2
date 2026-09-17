@@ -18,9 +18,9 @@ The package requires Dart 3 and Flutter 3.10 or newer.
 ## Platform
 
 
-| Linux | macOS | Windows | Android |
-| :---: | :---: | :-----: | :-----: |
-|   ✔️   |   ✔️   |    🧪    |    ✔️    |
+| Linux | macOS | Windows | Android | iOS |
+| :---: | :---: | :-----: | :-----: | :---: |
+|   ✔️   |   ✔️   |    🧪    |    ✔️    |  🧪  |
 
 ## Quick start
 
@@ -93,8 +93,9 @@ structured errors, and lifecycle stress coverage. Windows has the ConPTY,
 Job Object, worker implementation, and scheduled native/integration stress
 coverage, but requires runtime verification on Windows. Android has an
 `arm64-v8a` NDK build path and has passed the clean-slate output and input
-integration subset on an API 35 emulator. iOS clean-slate runtime support is
-not yet claimed.
+integration subset on an API 35 emulator. iOS has passed the clean-slate
+output and input integration subset on an iPhone simulator; physical-device
+runtime verification is still required before claiming production iOS support.
 
 ---
 
@@ -140,6 +141,16 @@ flutter test -d emulator-5554 \
 ```
 
 The same example-app command is used by the scheduled Android emulator job.
+
+The iOS clean-slate integration subset runs from the generated example app on
+an available iPhone simulator:
+
+```sh
+cd example
+flutter pub get
+flutter test -d <ios-simulator-udid> \
+  integration_test/clean_slate_ios_integration_test.dart
+```
 
 Use `libflutter_pty2.so` on Linux and `flutter_pty2.dll` on Windows. The
 native CTest suite is available in the native build directory:
