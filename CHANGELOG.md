@@ -47,6 +47,7 @@
 * Add an iOS example-app simulator integration harness for clean-slate output
   and input coverage.
 * Run the iOS simulator integration harness in macOS pull-request CI.
+* Guard the Unix post-fork child branch against forbidden non-async-safe calls.
 * Retain Unix session platforms across reactor startup failures and close races.
 * Preserve close-worker ownership across concurrent startup failure cleanup.
 * Document the expanded Windows scheduled verification scope.

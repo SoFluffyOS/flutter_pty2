@@ -122,6 +122,11 @@ and uses `execve()` with an explicit environment. A close-on-exec status pipe
 communicates `setsid`, controlling-terminal, `dup2`, `chdir`, and `execve`
 failures from the child without allocating after `fork()`.
 
+PR CI also runs a source-level guard over that branch to reject allocator,
+environment lookup, formatting, pthread, Dart API, and `execvp` calls from
+being reintroduced there. The scheduled fork-safety test exercises the same
+boundary while allocator-heavy sibling isolates are active.
+
 Native-quality CI also spawns PTYs while allocator-heavy Dart sibling isolates
 are active, guarding the fork boundary against inherited runtime state.
 

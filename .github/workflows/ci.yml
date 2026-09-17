@@ -39,6 +39,14 @@ jobs:
           dart run ffigen --config ffigen_v2.yaml
           && git diff --exit-code -- lib/src/generated/flutter_pty_bindings_generated.dart
 
+      - name: Audit Unix post-fork child path
+        if: runner.os != 'Windows'
+        run: python3 tool/check_unix_child_path.py src/unix/pty_unix_spawn.c
+
+      - name: Audit Unix post-fork child path on Windows
+        if: runner.os == 'Windows'
+        run: python tool/check_unix_child_path.py src/unix/pty_unix_spawn.c
+
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed .
 
