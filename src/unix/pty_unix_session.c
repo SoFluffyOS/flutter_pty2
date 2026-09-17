@@ -589,6 +589,14 @@ static void stop_process(PtySession *session)
     pthread_mutex_unlock(&platform->mutex);
 }
 
+static void cleanup_spawned_process(pid_t process_id)
+{
+    if (process_id <= 0) return;
+    kill(-process_id, SIGKILL);
+    kill(process_id, SIGKILL);
+    while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
+}
+
 static void post_startup_cancelled(PtySession *session)
 {
     PtyError error;
@@ -722,8 +730,7 @@ static void *bootstrap_worker(void *argument)
         }
         close(master_fd);
         close(slave_fd);
-        kill(process_id, SIGKILL);
-        while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
+        cleanup_spawned_process(process_id);
         pty_error_set_errno(&error, PTY_ERROR_OUT_OF_MEMORY, setup_error,
                             "allocating Unix PTY session failed");
         post_session_event(session,
