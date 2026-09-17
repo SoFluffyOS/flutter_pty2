@@ -250,6 +250,39 @@ void main() {
   );
 
   test(
+    'inherits, overrides, and removes environment values',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['print-env'],
+          environment: const PtyEnvironment.inherit(
+            overrides: {'PTY_TEST_VALUE': '继承🙂'},
+            remove: {'PATH'},
+          ),
+        ),
+      );
+      final output = await session.output.toList();
+      final exit = await session.done;
+      await session.close();
+      final lines = utf8.decode(output.expand((chunk) => chunk).toList()).split(
+            '\n',
+          );
+
+      expect(exit, isA<PtyExitCode>());
+      if (exit case PtyExitCode(:final code)) expect(code, 0);
+      expect(lines, contains('PTY_TEST_VALUE=继承🙂'));
+      expect(
+        lines.where((line) => line.toUpperCase().startsWith('PATH=')),
+        isEmpty,
+      );
+    },
+    skip: skipReason,
+  );
+
+  test(
     'starts the child in the requested working directory',
     () async {
       final child = fixture;
