@@ -714,6 +714,7 @@ static int windows_create_process(const PtySpawnOptions *options,
                       "initializing ConPTY process attributes failed");
         goto failure;
     }
+    attributes_initialized = 1;
     if (!UpdateProcThreadAttribute(attributes,
                                    0,
                                    PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
@@ -728,7 +729,6 @@ static int windows_create_process(const PtySpawnOptions *options,
                       "configuring ConPTY process attributes failed");
         goto failure;
     }
-    attributes_initialized = 1;
 
     command = pty_windows_build_command_line(options->executable,
                                              options->arguments,
