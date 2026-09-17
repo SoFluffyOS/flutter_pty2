@@ -41,6 +41,7 @@
 * Cover Windows close idempotency with queued input and kill during output.
 * Serialize Windows resize and kill against native session shutdown.
 * Keep the iOS native forwarder compilable under strict SDK feature macros.
+* Retain Unix session platforms across reactor startup failures and close races.
 * Document the expanded Windows scheduled verification scope.
 * Make Windows discard output natively after the Dart consumer cancels.
 * Avoid reporting normal Windows ConPTY EOF as an asynchronous I/O error.

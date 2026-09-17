@@ -557,20 +557,6 @@ static void free_unix_session(PtySession *session)
     free(session);
 }
 
-static void discard_unix_platform(PtySession *session)
-{
-    PtyUnixPlatform *platform = platform_for(session);
-    if (platform == NULL) return;
-    if (platform->master_fd >= 0) close(platform->master_fd);
-    if (platform->slave_fd >= 0) close(platform->slave_fd);
-    if (platform->wake_pipe[0] >= 0) close(platform->wake_pipe[0]);
-    if (platform->wake_pipe[1] >= 0) close(platform->wake_pipe[1]);
-    pty_write_queue_dispose(&platform->write_queue);
-    pthread_mutex_destroy(&platform->mutex);
-    free(platform);
-    pty_session_platform_store(session, NULL);
-}
-
 static void stop_process(PtySession *session)
 {
     PtyUnixPlatform *platform = platform_for(session);
@@ -774,22 +760,44 @@ static void *bootstrap_worker(void *argument)
     if (reactor_result != 0) {
         pty_debug_worker_finished(PTY_DEBUG_WORKER_READ);
         pty_session_release(session);
+        pty_session_mark_closing(session);
         stop_process(session);
         while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
-        discard_unix_platform(session);
+
+        int post_session_closed = 0;
+        pthread_mutex_lock(&platform->mutex);
+        platform->stopping = 1;
+        platform->reactor_done = 1;
+        platform->waiter_done = 1;
+        platform->output_closed = 1;
+        if (!platform->close_started) {
+            // Reserve the synchronous cleanup path so a concurrent close
+            // cannot start a worker after this bootstrap worker returns.
+            platform->close_started = 1;
+            platform->close_done = 1;
+            platform->session_closed_posted = 1;
+            post_session_closed = 1;
+        }
+        pthread_mutex_unlock(&platform->mutex);
+
         pty_error_set_errno(&error, PTY_ERROR_INTERNAL, reactor_result,
                             "starting PTY reactor failed");
         post_session_event(
             session,
             pty_post_spawn_failed(session->event_port, &error));
+        atomic_store_explicit(&session->output_closed, 1, memory_order_release);
         post_session_event(
             session,
             pty_post_simple_event(session->event_port, PTY_EVENT_OUTPUT_CLOSED));
-        pty_session_mark_closing(session);
-        pty_session_mark_closed(session);
-        post_session_event(
-            session,
-            pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED));
+        if (post_session_closed) {
+            pty_session_mark_closed(session);
+            post_session_event(
+                session,
+                pty_post_simple_event(session->event_port,
+                                      PTY_EVENT_SESSION_CLOSED));
+        } else {
+            maybe_post_session_closed(session);
+        }
         pty_unix_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
