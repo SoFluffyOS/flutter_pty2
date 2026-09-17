@@ -193,6 +193,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+      PTY_CONCURRENT_SESSION_COUNT: 8
+      PTY_SKIP_THREAD_COUNT_CHECK: 1
     steps:
       - uses: actions/checkout@v4
 

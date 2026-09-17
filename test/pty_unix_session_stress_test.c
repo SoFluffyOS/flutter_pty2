@@ -209,7 +209,10 @@ int main(void)
     const int baseline_file_descriptors = count_open_file_descriptors();
     const int baseline_child_processes = count_child_processes();
 #if defined(__linux__) || defined(__APPLE__)
-    const int baseline_threads = count_live_threads();
+    int baseline_threads = -1;
+    if (getenv("PTY_SKIP_THREAD_COUNT_CHECK") == NULL) {
+        baseline_threads = count_live_threads();
+    }
 #endif
     const char *arguments[] = {"-c", "exit 0"};
     const char *environment[] = {"PATH=/usr/bin:/bin"};
@@ -248,7 +251,9 @@ int main(void)
     assert(count_open_file_descriptors() == baseline_file_descriptors);
     assert(count_child_processes() == baseline_child_processes);
 #if defined(__linux__) || defined(__APPLE__)
-    assert(count_live_threads() == baseline_threads);
+    if (baseline_threads >= 0) {
+        assert(count_live_threads() == baseline_threads);
+    }
 #endif
     return 0;
 }

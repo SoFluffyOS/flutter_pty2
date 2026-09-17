@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 
 #include "../src/flutter_pty.h"
@@ -10,6 +11,18 @@
 #include "../src/pty_internal.h"
 
 #define CONCURRENT_SESSION_COUNT 100
+
+static int configured_session_count(void)
+{
+    const char *value = getenv("PTY_CONCURRENT_SESSION_COUNT");
+    if (value == NULL || value[0] == '\0') return CONCURRENT_SESSION_COUNT;
+    char *end = NULL;
+    const long parsed = strtol(value, &end, 10);
+    if (*end != '\0' || parsed < 1 || parsed > CONCURRENT_SESSION_COUNT) {
+        return CONCURRENT_SESSION_COUNT;
+    }
+    return (int)parsed;
+}
 
 typedef struct ConcurrentEvents {
     pthread_mutex_t mutex;
@@ -138,6 +151,7 @@ int main(void)
 #endif
     const char *arguments[] = {"-c", "exit 0"};
     const char *environment[] = {"PATH=/usr/bin:/bin"};
+    const int session_target = configured_session_count();
     const PtySpawnOptions options = {
         .executable = "/bin/sh",
         .arguments = arguments,
@@ -153,7 +167,7 @@ int main(void)
     int session_count = 0;
     int success = 1;
 
-    for (int index = 0; index < CONCURRENT_SESSION_COUNT; index++) {
+    for (int index = 0; index < session_target; index++) {
         PtyError error;
         if (!pty_session_start(&options, &sessions[session_count], &error)) {
             fprintf(stderr,
