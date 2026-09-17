@@ -459,17 +459,29 @@ static DWORD WINAPI windows_waiter(void *argument)
 {
     PtySession *session = argument;
     PtyWindowsPlatform *platform = windows_platform(session);
-    WaitForSingleObject(platform->process, INFINITE);
-    DWORD exit_code = 1;
-    if (GetExitCodeProcess(platform->process, &exit_code)) {
-        post_session_event(
-            session,
-            pty_post_process_exit(session->event_port, false, exit_code));
-    } else {
+    const DWORD wait_result = WaitForSingleObject(platform->process, INFINITE);
+    if (wait_result == WAIT_OBJECT_0) {
+        DWORD exit_code = 1;
+        if (GetExitCodeProcess(platform->process, &exit_code)) {
+            post_session_event(
+                session,
+                pty_post_process_exit(session->event_port, false, exit_code));
+        } else {
+            windows_post_error(session,
+                               PTY_ERROR_IO,
+                               GetLastError(),
+                               "reading ConPTY process exit failed");
+        }
+    } else if (wait_result == WAIT_FAILED) {
         windows_post_error(session,
                            PTY_ERROR_IO,
                            GetLastError(),
-                           "reading ConPTY process exit failed");
+                           "waiting for ConPTY process failed");
+    } else {
+        windows_post_error(session,
+                           PTY_ERROR_IO,
+                           ERROR_INVALID_DATA,
+                           "waiting for ConPTY process returned an invalid status");
     }
     InterlockedExchange(&session->process_exited, 1);
     EnterCriticalSection(&platform->mutex);

@@ -20,6 +20,7 @@
 * Publish the native platform backend atomically across startup-close races.
 * Avoid cross-thread `errno` handoff during concurrent Unix spawns.
 * Reset inherited `SIGBUS` handlers in Unix PTY children.
+* Report Windows process-wait failures without fabricating an exit code.
 * Return typed invalid-argument errors for malformed native input writes.
 * Close Unix input permanently when a partial write cannot be requeued.
 * Drop Unix output read concurrently canceled by the Dart consumer.
