@@ -7,23 +7,45 @@
 #include <windows.h>
 static volatile LONG post_count;
 static volatile LONG spawned_event;
+static volatile LONG reject_only_session_closed;
 #else
 #include <stdatomic.h>
 #include <unistd.h>
 static _Atomic int post_count;
 static _Atomic int spawned_event;
+static _Atomic int reject_only_session_closed;
 #endif
-static int reject_only_session_closed;
 
 #include "../src/flutter_pty.h"
 #include "../src/include/dart_api_dl.h"
+
+static int should_reject_only_session_closed(void)
+{
+#if defined(_WIN32)
+    return InterlockedCompareExchange(&reject_only_session_closed, 0, 0) != 0;
+#else
+    return atomic_load_explicit(&reject_only_session_closed,
+                                memory_order_acquire) != 0;
+#endif
+}
+
+static void set_reject_only_session_closed(int value)
+{
+#if defined(_WIN32)
+    InterlockedExchange(&reject_only_session_closed, value);
+#else
+    atomic_store_explicit(&reject_only_session_closed,
+                          value,
+                          memory_order_release);
+#endif
+}
 
 static bool reject_post(Dart_Port_DL port, Dart_CObject *message)
 {
     (void)port;
     const int32_t event_type =
         message->value.as_array.values[0]->value.as_int32;
-    if (reject_only_session_closed &&
+    if (should_reject_only_session_closed() &&
         event_type != PTY_EVENT_SESSION_CLOSED) {
 #if defined(_WIN32)
         if (event_type == PTY_EVENT_SPAWNED) {
@@ -162,7 +184,7 @@ int main(void)
     assert(stats_are_zero());
     assert(posted_event_count() == 1);
 
-    reject_only_session_closed = 1;
+    set_reject_only_session_closed(1);
 #if defined(_WIN32)
     InterlockedExchange(&spawned_event, 0);
 #else

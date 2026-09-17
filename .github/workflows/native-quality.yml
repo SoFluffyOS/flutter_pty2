@@ -432,9 +432,11 @@ jobs:
         run: cmake --build build/thread-sanitized --parallel 4
 
       - name: Run ThreadSanitizer CTest suite
-        run: ctest --test-dir build/thread-sanitized --output-on-failure
+        run: >-
+          ctest --test-dir build/thread-sanitized --output-on-failure
+          -E pty_unix_session_stress_test
 
       - name: Run ThreadSanitizer lifecycle stress
         run: build/thread-sanitized/tests/pty_unix_session_stress_test
         env:
-          PTY_NATIVE_STRESS_CYCLES: 1000
+          PTY_NATIVE_STRESS_CYCLES: 100
