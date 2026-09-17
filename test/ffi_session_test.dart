@@ -69,6 +69,27 @@ void main() {
     expect(closeCalls, 1);
   });
 
+  test('does not surface unobserved lifecycle errors', () async {
+    final state = FfiPtySessionState(
+      handle: Pointer<native.PtySession>.fromAddress(1),
+      bindings: native.FlutterPtyBindings.fromLookup(_fakeLookup),
+    );
+
+    state.handleNativeEvent(
+      const NativeAsyncError(
+        PtyNativeError(
+          domain: PtyErrorDomain.posix,
+          kind: PtyErrorKind.io,
+          code: 5,
+          message: 'read failed',
+        ),
+      ),
+    );
+
+    await expectLater(state.spawned, throwsA(isA<PtyIoException>()));
+    await Future<void>.delayed(Duration.zero);
+  });
+
   test('requests native shutdown when a native write fails', () {
     _writeErrorCloseCalls = 0;
     final state = FfiPtySessionState(

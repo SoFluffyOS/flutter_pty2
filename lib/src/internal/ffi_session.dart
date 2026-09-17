@@ -32,6 +32,7 @@ final class FfiPtySessionState implements NativeEventHandler {
       onDrained: _handleOutputDrained,
     );
     _input = InputFlowController(nativeTryWrite: _tryWrite);
+    _observeLifecycleErrors();
   }
 
   final Pointer<native.PtySession> handle;
@@ -49,6 +50,14 @@ final class FfiPtySessionState implements NativeEventHandler {
   bool _outputDrained = false;
   bool _protocolFailed = false;
   bool _asyncErrorHandled = false;
+
+  void _observeLifecycleErrors() {
+    unawaited(_spawnCompleter.future.then<void>((_) {}, onError: (_, __) {}));
+    unawaited(
+      _processExitCompleter.future.then<void>((_) {}, onError: (_, __) {}),
+    );
+    unawaited(_doneCompleter.future.then<void>((_) {}, onError: (_, __) {}));
+  }
 
   OutputFlowController get output => _output;
 

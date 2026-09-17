@@ -147,6 +147,9 @@ Dart maps them to typed `PtyException` subclasses such as
 Fatal asynchronous I/O errors fail the session futures, close input, and
 request the idempotent native shutdown path so a failed worker cannot leave
 the process running indefinitely.
+The implementation also observes each internal lifecycle future so callers
+that use only one of the public futures do not receive duplicate unhandled
+errors; the original error remains available to every public future.
 Malformed native event messages are treated as a fatal protocol error: Dart
 fails the session futures, discards buffered output, closes input, and requests
 native shutdown. The event pump remains alive until the native session reports
