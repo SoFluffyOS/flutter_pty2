@@ -123,14 +123,14 @@ final class FfiPtySessionState implements NativeEventHandler {
     if (_protocolFailed) return;
     _protocolFailed = true;
     final error = StateError(message);
-    _input.handleClosed(error);
-    _output.closeAndDiscard();
-    bindings.pty_session_begin_close(handle);
     if (!_spawnCompleter.isCompleted) _spawnCompleter.completeError(error);
     if (!_processExitCompleter.isCompleted) {
       _processExitCompleter.completeError(error);
     }
     if (!_doneCompleter.isCompleted) _doneCompleter.completeError(error);
+    _input.handleClosed(error);
+    _output.closeAndDiscard();
+    bindings.pty_session_begin_close(handle);
   }
 
   void _handleAsyncError(PtyNativeError nativeError) {

@@ -6,6 +6,7 @@ import 'package:flutter_pty2/src/generated/flutter_pty_bindings_generated.dart'
 import 'package:flutter_pty2/src/internal/ffi_session.dart';
 import 'package:flutter_pty2/src/internal/native_event.dart';
 import 'package:flutter_pty2/src/pty_exception.dart';
+import 'package:flutter_pty2/src/pty_exit.dart';
 import 'package:flutter_pty2/src/pty_input.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -64,6 +65,45 @@ void main() {
     expect(_protocolCloseCalls, 1);
     expect(_protocolDiscardCalls, 1);
   });
+
+  test('protocol errors win over pending output drain completion', () async {
+    _protocolCloseCalls = 0;
+    _protocolDiscardCalls = 0;
+    final state = FfiPtySessionState(
+      handle: Pointer<native.PtySession>.fromAddress(1),
+      bindings: native.FlutterPtyBindings.fromLookup(_protocolLookup),
+    );
+    final spawned = state.spawned;
+    final processExit = state.processExit;
+    final done = state.done;
+    final subscription = state.output.stream.listen((_) {});
+    subscription.pause();
+
+    state.handleNativeEvent(
+      NativeOutput(Uint8List.fromList([1])),
+    );
+    state.handleNativeEvent(const NativeOutputClosed());
+    state.handleNativeEvent(
+      const NativeProcessExit(exit: PtyExitCode(0)),
+    );
+    state.handleProtocolError('malformed native event');
+
+    final spawnedExpectation = expectLater(
+      spawned,
+      throwsA(isA<StateError>()),
+    );
+    final processExpectation = processExit.then((processResult) {
+      expect(processResult, isA<PtyExitCode>());
+      if (processResult case PtyExitCode(:final code)) expect(code, 0);
+    });
+    final doneExpectation = expectLater(done, throwsA(isA<StateError>()));
+    await Future.wait(
+        [spawnedExpectation, processExpectation, doneExpectation]);
+    expect(_protocolCloseCalls, 1);
+    expect(_protocolDiscardCalls, 1);
+    subscription.resume();
+    await subscription.cancel();
+  });
 }
 
 Pointer<T> _fakeLookup<T extends NativeType>(String symbolName) {
@@ -81,6 +121,11 @@ void _protocolDiscardOutput(Pointer<native.PtySession> session) {
   _protocolDiscardCalls++;
 }
 
+void _protocolAcknowledgeOutput(
+  Pointer<native.PtySession> session,
+  int byteCount,
+) {}
+
 Pointer<T> _protocolLookup<T extends NativeType>(String symbolName) {
   if (symbolName == 'pty_session_begin_close') {
     return Pointer.fromFunction<Void Function(Pointer<native.PtySession>)>(
@@ -90,6 +135,12 @@ Pointer<T> _protocolLookup<T extends NativeType>(String symbolName) {
   if (symbolName == 'pty_session_discard_output') {
     return Pointer.fromFunction<Void Function(Pointer<native.PtySession>)>(
       _protocolDiscardOutput,
+    ).cast();
+  }
+  if (symbolName == 'pty_session_ack_output') {
+    return Pointer.fromFunction<
+        Void Function(Pointer<native.PtySession>, Uint64)>(
+      _protocolAcknowledgeOutput,
     ).cast();
   }
   return Pointer<T>.fromAddress(1);
