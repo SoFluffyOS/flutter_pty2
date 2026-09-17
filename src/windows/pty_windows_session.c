@@ -374,12 +374,16 @@ static void windows_stop_process(PtyWindowsPlatform *platform)
 {
     if (platform == NULL) return;
     if (platform->job != NULL) TerminateJobObject(platform->job, 1);
+    HANDLE reader_thread = NULL;
+    HANDLE writer_thread = NULL;
     EnterCriticalSection(&platform->mutex);
     platform->stopping = 1;
     WakeAllConditionVariable(&platform->condition);
+    if (platform->reader_started) reader_thread = platform->reader_thread;
+    if (platform->writer_started) writer_thread = platform->writer_thread;
     LeaveCriticalSection(&platform->mutex);
-    if (platform->reader_started) CancelSynchronousIo(platform->reader_thread);
-    if (platform->writer_started) CancelSynchronousIo(platform->writer_thread);
+    if (reader_thread != NULL) CancelSynchronousIo(reader_thread);
+    if (writer_thread != NULL) CancelSynchronousIo(writer_thread);
 }
 
 static void windows_post_startup_cancelled(PtySession *session)
@@ -589,30 +593,52 @@ static DWORD WINAPI windows_bootstrap(void *argument)
 
     pty_debug_worker_started(PTY_DEBUG_WORKER_READ);
     pty_session_retain(session);
-    platform->reader_thread = CreateThread(NULL, 0, windows_reader, session, 0, NULL);
-    if (platform->reader_thread != NULL) platform->reader_started = 1;
-    else {
-        worker_error = GetLastError();
+    HANDLE reader_thread = CreateThread(NULL, 0, windows_reader, session, 0, NULL);
+    const DWORD reader_error = reader_thread == NULL ? GetLastError() : 0;
+    int cancel_reader = 0;
+    EnterCriticalSection(&platform->mutex);
+    platform->reader_thread = reader_thread;
+    if (reader_thread != NULL) {
+        platform->reader_started = 1;
+        cancel_reader = platform->stopping;
+    }
+    LeaveCriticalSection(&platform->mutex);
+    if (cancel_reader) CancelSynchronousIo(reader_thread);
+    if (reader_thread == NULL) {
+        worker_error = reader_error;
         worker_start_failed = 1;
         pty_debug_worker_finished(PTY_DEBUG_WORKER_READ);
         pty_session_release(session);
     }
     pty_debug_worker_started(PTY_DEBUG_WORKER_WRITE);
     pty_session_retain(session);
-    platform->writer_thread = CreateThread(NULL, 0, windows_writer, session, 0, NULL);
-    if (platform->writer_thread != NULL) platform->writer_started = 1;
-    else {
-        if (!worker_start_failed) worker_error = GetLastError();
+    HANDLE writer_thread = CreateThread(NULL, 0, windows_writer, session, 0, NULL);
+    const DWORD writer_error = writer_thread == NULL ? GetLastError() : 0;
+    int cancel_writer = 0;
+    EnterCriticalSection(&platform->mutex);
+    platform->writer_thread = writer_thread;
+    if (writer_thread != NULL) {
+        platform->writer_started = 1;
+        cancel_writer = platform->stopping;
+    }
+    LeaveCriticalSection(&platform->mutex);
+    if (cancel_writer) CancelSynchronousIo(writer_thread);
+    if (writer_thread == NULL) {
+        if (!worker_start_failed) worker_error = writer_error;
         worker_start_failed = 1;
         pty_debug_worker_finished(PTY_DEBUG_WORKER_WRITE);
         pty_session_release(session);
     }
     pty_debug_worker_started(PTY_DEBUG_WORKER_WAIT);
     pty_session_retain(session);
-    platform->waiter_thread = CreateThread(NULL, 0, windows_waiter, session, 0, NULL);
-    if (platform->waiter_thread != NULL) platform->waiter_started = 1;
-    else {
-        if (!worker_start_failed) worker_error = GetLastError();
+    HANDLE waiter_thread = CreateThread(NULL, 0, windows_waiter, session, 0, NULL);
+    const DWORD waiter_error = waiter_thread == NULL ? GetLastError() : 0;
+    EnterCriticalSection(&platform->mutex);
+    platform->waiter_thread = waiter_thread;
+    if (waiter_thread != NULL) platform->waiter_started = 1;
+    LeaveCriticalSection(&platform->mutex);
+    if (waiter_thread == NULL) {
+        if (!worker_start_failed) worker_error = waiter_error;
         worker_start_failed = 1;
         pty_debug_worker_finished(PTY_DEBUG_WORKER_WAIT);
         pty_session_release(session);

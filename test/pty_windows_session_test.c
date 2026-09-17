@@ -112,6 +112,24 @@ static int wait_for_events(int wait_for_close)
     return 1;
 }
 
+static int wait_for_session_closed(void)
+{
+    const DWORD deadline = GetTickCount() + 5000;
+    EnterCriticalSection(&events.mutex);
+    while (!events.session_closed) {
+        const DWORD now = GetTickCount();
+        const DWORD remaining = deadline > now ? deadline - now : 0;
+        if (!SleepConditionVariableCS(&events.condition,
+                                      &events.mutex,
+                                      remaining)) {
+            LeaveCriticalSection(&events.mutex);
+            return 0;
+        }
+    }
+    LeaveCriticalSection(&events.mutex);
+    return 1;
+}
+
 int main(void)
 {
     InitializeCriticalSection(&events.mutex);
@@ -138,6 +156,17 @@ int main(void)
     invalid_options.size.rows = 0;
     assert(pty_session_start(&invalid_options, &session, &error) == 0);
     assert(error.kind == PTY_ERROR_INVALID_ARGUMENT);
+
+    reset_events();
+    assert(pty_session_start(&options, &session, &error) == 1);
+    assert(session != NULL);
+    active_session = session;
+    pty_session_begin_close(session);
+    assert(wait_for_session_closed());
+    pty_session_release(session);
+    active_session = NULL;
+
+    reset_events();
     assert(pty_session_start(&options, &session, &error) == 1);
     assert(session != NULL);
     active_session = session;
