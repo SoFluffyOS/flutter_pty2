@@ -14,11 +14,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
-  final configured =
-      (Platform.isLinux || Platform.isMacOS) && library?.isNotEmpty == true;
+  final fixture = Platform.environment['PTY_TEST_CHILD'];
+  final configured = switch (Platform.isWindows) {
+    true => library?.isNotEmpty == true && fixture?.isNotEmpty == true,
+    false =>
+      (Platform.isLinux || Platform.isMacOS) && library?.isNotEmpty == true,
+  };
   final skipReason = switch (configured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY on Linux or macOS to run finalizer tests.',
+    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
+        'platform to run finalizer tests.',
   };
 
   test(
@@ -29,9 +34,23 @@ void main() {
       final debug = _NativeDebug(libraryPath);
       final baseline = debug.read();
       final references = <WeakReference<PtySession>>[];
+      final executable = switch (Platform.isWindows) {
+        true => fixture,
+        false => '/bin/sh',
+      };
+      if (executable == null) return;
+      final arguments = switch (Platform.isWindows) {
+        true => const ['sleep', '30'],
+        false => const ['-c', 'sleep 30'],
+      };
       try {
         for (var index = 0; index < 4; index++) {
-          references.add(await _spawnUnownedSession());
+          references.add(
+            await _spawnUnownedSession(
+              executable: executable,
+              arguments: arguments,
+            ),
+          );
         }
         await _waitFor(
           () => debug.read().liveSessions >= baseline.liveSessions + 4,
@@ -66,11 +85,14 @@ void main() {
   );
 }
 
-Future<WeakReference<PtySession>> _spawnUnownedSession() async {
+Future<WeakReference<PtySession>> _spawnUnownedSession({
+  required String executable,
+  required List<String> arguments,
+}) async {
   final session = await Pty.spawn(
-    const PtySpawnOptions(
-      executable: '/bin/sh',
-      arguments: ['-c', 'sleep 30'],
+    PtySpawnOptions(
+      executable: executable,
+      arguments: arguments,
     ),
   );
   return WeakReference(session);

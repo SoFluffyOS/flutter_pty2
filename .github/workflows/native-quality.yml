@@ -178,6 +178,18 @@ jobs:
           $env:PATH = "$($library.DirectoryName);$env:PATH"
           flutter test test/clean_slate_lifecycle_stress_test.dart
 
+      - name: Run Windows Dart finalizer test
+        shell: pwsh
+        run: |
+          $library = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/native" -Filter flutter_pty2.dll -Recurse | Select-Object -First 1
+          $fixture = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/pty_test_child" -Filter pty_test_child.exe -Recurse | Select-Object -First 1
+          if ($null -eq $library) { throw 'flutter_pty2.dll was not built' }
+          if ($null -eq $fixture) { throw 'pty_test_child.exe was not built' }
+          $env:FLUTTER_PTY2_LIBRARY = $library.FullName
+          $env:PTY_TEST_CHILD = $fixture.FullName
+          $env:PATH = "$($library.DirectoryName);$env:PATH"
+          python tool/run_flutter_test_with_vm_service.py test/clean_slate_finalizer_test.dart
+
       - name: Run Windows randomized stress
         shell: pwsh
         run: |

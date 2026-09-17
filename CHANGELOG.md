@@ -34,6 +34,7 @@
 * Add scheduled macOS AddressSanitizer and UndefinedBehaviorSanitizer coverage.
 * Add scheduled Windows runtime, stress, and large-transfer coverage.
 * Run Dart lifecycle, randomized, and exit-drain stress on Windows.
+* Run the native-finalizer fallback test on Windows.
 * Make Windows discard output natively after the Dart consumer cancels.
 * Avoid reporting normal Windows ConPTY EOF as an asynchronous I/O error.
 * Reject native writes as soon as session shutdown begins.
