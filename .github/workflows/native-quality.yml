@@ -31,15 +31,35 @@ jobs:
         run: cmake --build build/strict-unix --parallel 4
 
       - name: Run Clang static analyzer
-        run: >-
-          clang --analyze
-          -std=c11
-          -DDART_SHARED_LIB
-          -Isrc
-          -Isrc/include
-          -fno-color-diagnostics
-          -o build/strict-unix/flutter_pty2-analysis.plist
-          src/flutter_pty.c
+        run: |
+          clang --analyze \
+            --analyzer-output sarif \
+            -std=c11 \
+            -DDART_SHARED_LIB \
+            -Isrc \
+            -Isrc/include \
+            -fno-color-diagnostics \
+            -o build/strict-unix/flutter_pty2-analysis.sarif \
+            src/flutter_pty.c
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path('build/strict-unix/flutter_pty2-analysis.sarif').read_text()
+          )
+          findings = [
+              result
+              for run in report.get('runs', [])
+              for result in run.get('results', [])
+          ]
+          if findings:
+              print(json.dumps(findings, indent=2))
+              raise SystemExit(
+                  f'Clang static analyzer found {len(findings)} issue(s).'
+              )
+          print('Clang static analyzer found no issues.')
+          PY
 
   unix-fork-safety:
     strategy:
