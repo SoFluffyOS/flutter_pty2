@@ -169,6 +169,16 @@ int main(void)
     assert(session != NULL);
     active_session = session;
     assert(wait_for_spawn());
+    const uint8_t byte = 1;
+    assert(pty_session_try_write(NULL, 42, &byte, 1, &error) ==
+           PTY_WRITE_ERROR);
+    assert(error.kind == PTY_ERROR_INVALID_ARGUMENT);
+    assert(pty_session_try_write(session, 42, NULL, 1, &error) ==
+           PTY_WRITE_ERROR);
+    assert(error.kind == PTY_ERROR_INVALID_ARGUMENT);
+    assert(pty_session_try_write(session, 42, &byte, 0, &error) ==
+           PTY_WRITE_ERROR);
+    assert(error.kind == PTY_ERROR_INVALID_ARGUMENT);
     PtySize invalid_size = {.rows = 0, .columns = 80};
     assert(pty_session_resize(session, invalid_size, &error) == 0);
     assert(error.kind == PTY_ERROR_INVALID_ARGUMENT);

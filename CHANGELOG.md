@@ -17,6 +17,7 @@
 * Keep PTY output available after an input-channel failure and release queued
   native writes immediately.
 * Close sessions safely when shutdown races native startup publication.
+* Return typed invalid-argument errors for malformed native input writes.
 * Add native lifecycle, transfer, exit-drain, randomized race, finalizer, and
   platform resource-leak coverage, including scheduled 1 GiB transfers and
   10,000 randomized operations.

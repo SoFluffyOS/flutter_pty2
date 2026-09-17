@@ -143,6 +143,16 @@ int main(void)
     active_session = session;
     assert(wait_for_events(0));
     assert(events.spawned == 1);
+    const uint8_t byte = 1;
+    assert(pty_session_try_write(NULL, 42, &byte, 1, &error) ==
+           PTY_WRITE_ERROR);
+    assert(error.kind == PTY_ERROR_INVALID_ARGUMENT);
+    assert(pty_session_try_write(session, 42, NULL, 1, &error) ==
+           PTY_WRITE_ERROR);
+    assert(error.kind == PTY_ERROR_INVALID_ARGUMENT);
+    assert(pty_session_try_write(session, 42, &byte, 0, &error) ==
+           PTY_WRITE_ERROR);
+    assert(error.kind == PTY_ERROR_INVALID_ARGUMENT);
     assert(events.exit_code == 0);
     assert(events.output_length >= strlen("native-session"));
     assert(events.output_closed == 1);
@@ -151,7 +161,6 @@ int main(void)
     assert(pty_session_send_signal(session, 15, 0, &signal_error) == 0);
     assert(signal_error.kind == PTY_ERROR_UNSUPPORTED);
     pty_session_begin_close(session);
-    const uint8_t byte = 1;
     PtyError write_error;
     assert(pty_session_try_write(session, 1, &byte, 1, &write_error) ==
            PTY_WRITE_CLOSED);

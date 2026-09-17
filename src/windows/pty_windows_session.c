@@ -1072,8 +1072,16 @@ FFI_PLUGIN_EXPORT int32_t pty_session_try_write(PtySession *session,
                                                 PtyError *out_error)
 {
     pty_error_clear(out_error);
+    if (session == NULL || bytes == NULL || length == 0) {
+        pty_error_set(out_error,
+                      PTY_ERROR_DOMAIN_INTERNAL,
+                      PTY_ERROR_INVALID_ARGUMENT,
+                      ERROR_INVALID_PARAMETER,
+                      "invalid PTY input write");
+        return PTY_WRITE_ERROR;
+    }
     PtyWindowsPlatform *platform = windows_platform(session);
-    if (platform == NULL || length == 0) return PTY_WRITE_CLOSED;
+    if (platform == NULL) return PTY_WRITE_CLOSED;
     EnterCriticalSection(&platform->mutex);
     const LONG lifecycle = InterlockedCompareExchange(&session->lifecycle,
                                                       PTY_LIFECYCLE_CLOSING,
