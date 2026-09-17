@@ -142,6 +142,24 @@ void main() {
     );
   });
 
+  test('fails inflight tryWrite requests when a later request is closed',
+      () async {
+    var nativeCalls = 0;
+    final input = InputFlowController(
+      nativeTryWrite: (_, __) {
+        nativeCalls++;
+        if (nativeCalls == 1) return PtyWriteResult.accepted;
+        return PtyWriteResult.closed;
+      },
+    );
+
+    expect(input.tryWrite(Uint8List.fromList([1])), PtyWriteResult.accepted);
+    final flush = input.flush();
+    expect(input.tryWrite(Uint8List.fromList([2])), PtyWriteResult.closed);
+
+    await expectLater(flush, throwsA(isA<PtyClosedException>()));
+  });
+
   test('tryWrite rejects buffers larger than one native request', () {
     final input = InputFlowController(
       maxChunkSize: 2,
