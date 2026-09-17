@@ -11,6 +11,7 @@ static volatile LONG post_count;
 #include <unistd.h>
 static _Atomic int post_count;
 #endif
+static int reject_only_session_closed;
 
 #include "../src/flutter_pty.h"
 #include "../src/include/dart_api_dl.h"
@@ -18,7 +19,12 @@ static _Atomic int post_count;
 static bool reject_post(Dart_Port_DL port, Dart_CObject *message)
 {
     (void)port;
-    (void)message;
+    const int32_t event_type =
+        message->value.as_array.values[0]->value.as_int32;
+    if (reject_only_session_closed &&
+        event_type != PTY_EVENT_SESSION_CLOSED) {
+        return true;
+    }
 #if defined(_WIN32)
     InterlockedIncrement(&post_count);
 #else
@@ -135,5 +141,29 @@ int main(void)
     }
     assert(stats_are_zero());
     assert(posted_event_count() == 1);
+
+    reject_only_session_closed = 1;
+    const char *close_arguments[] = {"-c", "sleep 30"};
+    const PtySpawnOptions close_options = {
+        .executable = executable,
+        .arguments = close_arguments,
+        .argument_count = 2,
+        .environment = environment,
+        .environment_count = 1,
+        .size = {.rows = 24, .columns = 80},
+        .input_buffer_bytes = 64 * 1024,
+        .output_window_bytes = 16 * 1024,
+        .event_port = 2,
+    };
+    session = NULL;
+    assert(pty_session_start(&close_options, &session, &error) == 1);
+    assert(session != NULL);
+    pty_session_begin_close(session);
+    for (int attempt = 0; attempt < 500 && !stats_are_zero(); attempt++) {
+        wait_milliseconds(10);
+    }
+    // The rejected SESSION_CLOSED event abandons the native owner. Do not
+    // release session here; the close-worker path already did so.
+    assert(stats_are_zero());
     return 0;
 }

@@ -1154,13 +1154,22 @@ FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
     platform->close_started = 1;
     pthread_mutex_unlock(&platform->mutex);
     pty_debug_worker_started(PTY_DEBUG_WORKER_CLOSE);
+    // Keep the platform alive until the creator has published the detached
+    // worker handle. The worker can finish immediately, and a failed Dart
+    // event post may release the Dart-owned reference before this function
+    // returns.
+    pty_session_retain(session);
     pty_session_retain(session);
     const int result = create_detached_worker(&platform->close_thread,
                                               close_worker,
                                               session);
-    if (result == 0) return;
+    if (result == 0) {
+        pty_session_release(session);
+        return;
+    }
 
     pty_debug_worker_finished(PTY_DEBUG_WORKER_CLOSE);
+    pty_session_release(session);
     pty_session_release(session);
     pthread_mutex_lock(&platform->mutex);
     platform->stopping = 1;
