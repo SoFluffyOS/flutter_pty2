@@ -151,6 +151,24 @@ static void windows_discard_pending_writes(PtyWindowsPlatform *platform)
     LeaveCriticalSection(&platform->mutex);
 }
 
+static void windows_maybe_post_writable(PtySession *session)
+{
+    PtyWindowsPlatform *platform = windows_platform(session);
+    int should_post = 0;
+    EnterCriticalSection(&platform->mutex);
+    if (platform->write_backpressured &&
+        pty_write_queue_pending_bytes(&platform->write_queue) <=
+            session->input_buffer_limit / 2) {
+        platform->write_backpressured = 0;
+        should_post = 1;
+    }
+    LeaveCriticalSection(&platform->mutex);
+    if (!should_post) return;
+    post_session_event(
+        session,
+        pty_post_simple_event(session->event_port, PTY_EVENT_WRITABLE));
+}
+
 static void windows_maybe_post_closed(PtySession *session)
 {
     PtyWindowsPlatform *platform = windows_platform(session);
@@ -267,6 +285,7 @@ static DWORD WINAPI windows_writer(void *argument)
         PtyWriteChunk *chunk =
             pty_write_queue_dequeue(&platform->write_queue);
         if (chunk == NULL) continue;
+        windows_maybe_post_writable(session);
         uint64_t offset = 0;
         int succeeded = 1;
         DWORD failure_error = ERROR_WRITE_FAULT;
@@ -296,21 +315,7 @@ static DWORD WINAPI windows_writer(void *argument)
             post_session_event(
                 session,
                 pty_post_write_complete(session->event_port, chunk->request_id));
-            int should_post_writable = 0;
-            EnterCriticalSection(&platform->mutex);
-            if (platform->write_backpressured &&
-                pty_write_queue_pending_bytes(&platform->write_queue) <=
-                    session->input_buffer_limit / 2) {
-                platform->write_backpressured = 0;
-                should_post_writable = 1;
-            }
-            LeaveCriticalSection(&platform->mutex);
-            if (should_post_writable) {
-                post_session_event(
-                    session,
-                    pty_post_simple_event(session->event_port,
-                                          PTY_EVENT_WRITABLE));
-            }
+            windows_maybe_post_writable(session);
         } else {
             PtyError error;
             pty_error_set(&error,

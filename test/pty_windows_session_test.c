@@ -11,6 +11,9 @@ typedef struct SessionEvents {
     CRITICAL_SECTION mutex;
     CONDITION_VARIABLE condition;
     int spawned;
+    int write_complete;
+    int writable;
+    int writable_before_write_complete;
     int output_closed;
     int process_exit;
     int session_closed;
@@ -50,6 +53,13 @@ static bool post_object(Dart_Port_DL port, Dart_CObject *message)
         }
         events.output_length += (size_t)output_length_to_ack;
         break;
+    case PTY_EVENT_WRITE_COMPLETE:
+        events.write_complete = 1;
+        break;
+    case PTY_EVENT_WRITABLE:
+        events.writable = 1;
+        if (!events.write_complete) events.writable_before_write_complete = 1;
+        break;
     case PTY_EVENT_OUTPUT_CLOSED:
         events.output_closed = 1;
         break;
@@ -82,6 +92,9 @@ static void reset_events(void)
 {
     EnterCriticalSection(&events.mutex);
     events.spawned = 0;
+    events.write_complete = 0;
+    events.writable = 0;
+    events.writable_before_write_complete = 0;
     events.output_closed = 0;
     events.process_exit = 0;
     events.session_closed = 0;
@@ -117,6 +130,42 @@ static int wait_for_session_closed(void)
     const DWORD deadline = GetTickCount() + 5000;
     EnterCriticalSection(&events.mutex);
     while (!events.session_closed) {
+        const DWORD now = GetTickCount();
+        const DWORD remaining = deadline > now ? deadline - now : 0;
+        if (!SleepConditionVariableCS(&events.condition,
+                                      &events.mutex,
+                                      remaining)) {
+            LeaveCriticalSection(&events.mutex);
+            return 0;
+        }
+    }
+    LeaveCriticalSection(&events.mutex);
+    return 1;
+}
+
+static int wait_for_spawned(void)
+{
+    const DWORD deadline = GetTickCount() + 5000;
+    EnterCriticalSection(&events.mutex);
+    while (!events.spawned) {
+        const DWORD now = GetTickCount();
+        const DWORD remaining = deadline > now ? deadline - now : 0;
+        if (!SleepConditionVariableCS(&events.condition,
+                                      &events.mutex,
+                                      remaining)) {
+            LeaveCriticalSection(&events.mutex);
+            return 0;
+        }
+    }
+    LeaveCriticalSection(&events.mutex);
+    return 1;
+}
+
+static int wait_for_writable(void)
+{
+    const DWORD deadline = GetTickCount() + 5000;
+    EnterCriticalSection(&events.mutex);
+    while (!events.writable) {
         const DWORD now = GetTickCount();
         const DWORD remaining = deadline > now ? deadline - now : 0;
         if (!SleepConditionVariableCS(&events.condition,
@@ -203,6 +252,44 @@ int main(void)
            PTY_WRITE_CLOSED);
     assert(wait_for_events(1));
     pty_session_release(session);
+
+    reset_events();
+    const char *backpressure_arguments[] = {"slow-input", "1000"};
+    const PtySpawnOptions backpressure_options = {
+        .executable = fixture,
+        .arguments = backpressure_arguments,
+        .argument_count = 2,
+        .environment = environment,
+        .environment_count = 1,
+        .size = {.rows = 24, .columns = 80},
+        .input_buffer_bytes = 64 * 1024,
+        .output_window_bytes = 16 * 1024,
+        .event_port = 1,
+    };
+    assert(pty_session_start(&backpressure_options, &session, &error) == 1);
+    assert(session != NULL);
+    active_session = session;
+    assert(wait_for_spawned());
+    uint8_t oversized_input[64 * 1024 + 1] = {0};
+    uint8_t large_input[64 * 1024] = {0};
+    assert(pty_session_try_write(session,
+                                 42,
+                                 oversized_input,
+                                 sizeof(oversized_input),
+                                 &error) == PTY_WRITE_BACKPRESSURED);
+    assert(pty_session_try_write(session,
+                                 43,
+                                 large_input,
+                                 sizeof(large_input),
+                                 &error) == PTY_WRITE_ACCEPTED);
+    assert(wait_for_writable());
+    EnterCriticalSection(&events.mutex);
+    assert(events.writable_before_write_complete == 1);
+    LeaveCriticalSection(&events.mutex);
+    pty_session_begin_close(session);
+    assert(wait_for_events(1));
+    pty_session_release(session);
+    active_session = NULL;
 
     reset_events();
     discard_after_spawn = 1;
