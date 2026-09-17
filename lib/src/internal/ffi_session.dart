@@ -99,12 +99,7 @@ final class FfiPtySessionState implements NativeEventHandler {
         _capabilities ??= decodePtyCapabilities(capabilities);
         if (!_spawnCompleter.isCompleted) _spawnCompleter.complete();
       case NativeSpawnFailed(:final error):
-        if (!_spawnCompleter.isCompleted) {
-          _spawnCompleter.completeError(
-            PtySpawnException('PTY process failed to spawn',
-                nativeError: error),
-          );
-        }
+        _handleSpawnFailure(error);
       case NativeOutput(:final bytes):
         _output.addNativeOutput(bytes);
       case NativeOutputClosed():
@@ -158,13 +153,26 @@ final class FfiPtySessionState implements NativeEventHandler {
     if (_asyncErrorHandled) return;
     _asyncErrorHandled = true;
     final error = PtyIoException('PTY I/O failed', nativeError: nativeError);
+    _failLifecycle(error);
+    _onAsyncError?.call();
+  }
+
+  void _handleSpawnFailure(PtyNativeError nativeError) {
+    final error = PtySpawnException(
+      'PTY process failed to spawn',
+      nativeError: nativeError,
+    );
+    _failLifecycle(error);
+    _onAsyncError?.call();
+  }
+
+  void _failLifecycle(Object error) {
     if (!_spawnCompleter.isCompleted) _spawnCompleter.completeError(error);
     _input.handleClosed(error);
     if (!_processExitCompleter.isCompleted) {
       _processExitCompleter.completeError(error);
     }
     if (!_doneCompleter.isCompleted) _doneCompleter.completeError(error);
-    _onAsyncError?.call();
   }
 
   void _maybeCompleteDone() {

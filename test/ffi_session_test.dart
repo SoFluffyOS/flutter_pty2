@@ -13,6 +13,35 @@ import 'package:flutter_pty2/src/pty_input.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('fails lifecycle futures on an early spawn failure', () async {
+    var closeCalls = 0;
+    final state = FfiPtySessionState(
+      handle: Pointer<native.PtySession>.fromAddress(1),
+      bindings: native.FlutterPtyBindings.fromLookup(_fakeLookup),
+      onAsyncError: () => closeCalls++,
+    );
+    final spawned = state.spawned;
+    final processExit = state.processExit;
+    final done = state.done;
+    const nativeError = PtyNativeError(
+      domain: PtyErrorDomain.posix,
+      kind: PtyErrorKind.notFound,
+      code: 2,
+      message: 'missing executable',
+    );
+
+    state.handleNativeEvent(const NativeSpawnFailed(nativeError));
+
+    await expectLater(spawned, throwsA(isA<PtySpawnException>()));
+    await expectLater(processExit, throwsA(isA<PtySpawnException>()));
+    await expectLater(done, throwsA(isA<PtySpawnException>()));
+    expect(closeCalls, 1);
+    expect(
+      state.input.tryWrite(Uint8List.fromList([1])),
+      PtyWriteResult.closed,
+    );
+  });
+
   test('fails spawn and lifecycle futures on an early async error', () async {
     var closeCalls = 0;
     final state = FfiPtySessionState(

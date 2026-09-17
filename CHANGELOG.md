@@ -13,6 +13,7 @@
   focused native and Dart drivers.
 * Propagate early asynchronous native failures to spawn, process-exit, done,
   and pending-input futures.
+* Propagate asynchronous spawn failures to all clean-slate lifecycle futures.
 * Fail closed and request native shutdown when the clean-slate event protocol is
   malformed.
 * Complete deterministic close when a malformed terminal event is received.
