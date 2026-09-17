@@ -50,6 +50,10 @@
 * Align the minimum Flutter SDK constraint with the Dart 3 implementation.
 * Preserve buffered Unix output when a child exits during read backpressure.
 * Add Swift Package Manager support for iOS and macOS.
+* Share native-library resolution with the legacy API and honor configured
+  library overrides consistently.
+* Reject malformed native event messages with extra fields and make event-pump
+  cleanup idempotent.
 
 ## 1.0.2
 
