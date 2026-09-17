@@ -61,6 +61,7 @@
 * Notify Unix input backpressure waiters when a partial write reaches the
   writable low-water mark.
 * Make native ThreadSanitizer coverage race-free and practical for CI.
+* Verify the native output credit window bounds unacknowledged PTY output.
 * Close sessions safely when shutdown races native startup publication.
 * Publish the native platform backend atomically across startup-close races.
 * Avoid cross-thread `errno` handoff during concurrent Unix spawns.
