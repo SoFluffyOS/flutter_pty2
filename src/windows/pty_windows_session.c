@@ -270,7 +270,10 @@ static DWORD WINAPI windows_writer(void *argument)
         DWORD failure_error = ERROR_WRITE_FAULT;
         while (offset < chunk->length) {
             DWORD written = 0;
-            const DWORD requested = (DWORD)(chunk->length - offset);
+            const uint64_t remaining = chunk->length - offset;
+            const DWORD requested = remaining > UINT32_MAX
+                                        ? UINT32_MAX
+                                        : (DWORD)remaining;
             const BOOL write_succeeded = WriteFile(platform->input_write,
                                                    chunk->bytes + offset,
                                                    requested,
