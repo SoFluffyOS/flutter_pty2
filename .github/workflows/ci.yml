@@ -60,6 +60,21 @@ jobs:
           cmake -S test/fixtures/pty_test_child -B build/pty_test_child
           && cmake --build build/pty_test_child --config Release --parallel 4
 
+      - name: Verify iOS native source compiles
+        if: runner.os == 'macOS'
+        run: >-
+          xcrun --sdk iphonesimulator clang
+          -target arm64-apple-ios13.0
+          -std=c11
+          -Wall -Wextra -Werror
+          -D_POSIX_C_SOURCE=200809L
+          -DDART_SHARED_LIB
+          -Isrc
+          -Isrc/include
+          -Iios/flutter_pty2/Sources/flutter_pty2/include
+          -fsyntax-only
+          ios/flutter_pty2/Sources/flutter_pty2/flutter_pty.c
+
       - name: Run native tests
         if: runner.os != 'Windows'
         env:

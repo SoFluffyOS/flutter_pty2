@@ -34,6 +34,18 @@
 #define PTY_CHILD_STATUS_FD 3
 #define PTY_DEFAULT_PATH "/usr/local/bin:/usr/bin:/bin"
 
+static void pty_make_raw(struct termios *attributes)
+{
+    attributes->c_iflag &=
+        ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+    attributes->c_oflag &= ~OPOST;
+    attributes->c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+    attributes->c_cflag &= ~(CSIZE | PARENB);
+    attributes->c_cflag |= CS8;
+    attributes->c_cc[VMIN] = 1;
+    attributes->c_cc[VTIME] = 0;
+}
+
 #if defined(__ANDROID__)
 static int pty_open(int *master_fd,
                     int *slave_fd,
@@ -628,7 +640,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     // The clean-slate API transports terminal output as bytes.  Leave the
     // PTY in raw mode so the kernel does not rewrite output (for example,
     // turning each LF into CRLF through OPOST/ONLCR).
-    cfmakeraw(&attributes);
+    pty_make_raw(&attributes);
 #ifdef IUTF8
     attributes.c_iflag |= IUTF8;
 #endif
