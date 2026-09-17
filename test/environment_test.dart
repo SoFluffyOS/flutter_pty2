@@ -1,7 +1,21 @@
 import 'package:flutter_pty2/src/environment.dart';
+import 'package:flutter_pty2/src/pty_environment.dart' as clean_slate;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('clean-slate Windows environment collapses case collisions', () {
+    final environment = clean_slate.buildEnvironment(
+      const clean_slate.PtyEnvironment.replace({
+        'Path': 'first',
+        'PATH': 'second',
+      }),
+      caseInsensitive: true,
+    );
+
+    expect(environment.keys, ['PATH']);
+    expect(environment['PATH'], 'second');
+  });
+
   test('Windows environment overrides keys case-insensitively', () {
     final environment = buildPtyEnvironment(
       {'Path': 'base', 'HOME': 'home'},
