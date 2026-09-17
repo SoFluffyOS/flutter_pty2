@@ -3,6 +3,10 @@
 * Add the clean-slate `Pty.spawn` session API with raw-byte output, async input,
   bounded flow control, typed errors, process lifecycle futures, signals, and
   asynchronous idempotent close.
+* Split clean-slate Dart session orchestration and Windows spawn code into
+  focused native and Dart drivers.
+* Propagate early asynchronous native failures to spawn, process-exit, done,
+  and pending-input futures.
 * Treat failed native event delivery as Dart endpoint abandonment and release
   the session owner exactly once.
 * Skip subsequent native event posts after a session has been abandoned.
