@@ -240,6 +240,40 @@ void main() {
   );
 
   test(
+    'flushes an accepted tryWrite before process completion',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final expected = Uint8List.fromList([
+        for (var index = 0; index < 64 * 1024; index++) index % 251,
+      ]);
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: ['copy-input', '${expected.length}'],
+        ),
+      );
+      final outputFuture = session.output.toList();
+      try {
+        expect(
+          session.input.tryWrite(expected),
+          PtyWriteResult.accepted,
+        );
+        await session.input.flush();
+        final exit = await session.done;
+        final output = await outputFuture;
+
+        expect(exit, isA<PtyExitCode>());
+        if (exit case PtyExitCode(:final code)) expect(code, 0);
+        expect(output.expand((chunk) => chunk).toList(), expected);
+      } finally {
+        await session.close();
+      }
+    },
+    skip: skipReason,
+  );
+
+  test(
     'keeps trailing ConPTY output available after process exit until done',
     () async {
       final child = fixture;
