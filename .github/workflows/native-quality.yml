@@ -36,6 +36,7 @@ jobs:
             --analyzer-output sarif \
             -std=c11 \
             -DDART_SHARED_LIB \
+            -DFLUTTER_PTY2_INCLUDE_COMMON_SOURCES \
             -Isrc \
             -Isrc/include \
             -fno-color-diagnostics \
