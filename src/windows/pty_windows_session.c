@@ -872,8 +872,22 @@ FFI_PLUGIN_EXPORT int32_t pty_session_resize(PtySession *session,
         .X = (SHORT)size.columns,
         .Y = (SHORT)size.rows,
     };
+    EnterCriticalSection(&platform->mutex);
+    const LONG lifecycle = InterlockedCompareExchange(&session->lifecycle,
+                                                      0,
+                                                      0);
+    if (platform->stopping || lifecycle >= PTY_LIFECYCLE_CLOSING) {
+        LeaveCriticalSection(&platform->mutex);
+        pty_error_set(out_error,
+                      PTY_ERROR_DOMAIN_INTERNAL,
+                      PTY_ERROR_CLOSED,
+                      ERROR_OPERATION_ABORTED,
+                      "PTY session is closed");
+        return 0;
+    }
     const HRESULT resize_result =
         ResizePseudoConsole(platform->pseudo_console, console_size);
+    LeaveCriticalSection(&platform->mutex);
     if (FAILED(resize_result)) {
         pty_error_set(out_error,
                       PTY_ERROR_DOMAIN_HRESULT,
@@ -899,20 +913,38 @@ FFI_PLUGIN_EXPORT int32_t pty_session_kill(PtySession *session,
         return 0;
     }
     EnterCriticalSection(&platform->mutex);
+    const LONG lifecycle = InterlockedCompareExchange(&session->lifecycle,
+                                                      0,
+                                                      0);
+    if (platform->stopping || lifecycle >= PTY_LIFECYCLE_CLOSING) {
+        LeaveCriticalSection(&platform->mutex);
+        pty_error_set(out_error,
+                      PTY_ERROR_DOMAIN_INTERNAL,
+                      PTY_ERROR_CLOSED,
+                      ERROR_OPERATION_ABORTED,
+                      "PTY session is closed");
+        return 0;
+    }
     if (InterlockedCompareExchange(&session->process_exited, 0, 0) != 0) {
         LeaveCriticalSection(&platform->mutex);
         return 1;
     }
     platform->termination_requested = 1;
-    LeaveCriticalSection(&platform->mutex);
-    if (!TerminateJobObject(platform->job, 1)) {
-        const DWORD error_code = GetLastError();
-        if (WaitForSingleObject(platform->process, 0) == WAIT_OBJECT_0) {
+    const BOOL terminated = TerminateJobObject(platform->job, 1);
+    const DWORD error_code = terminated ? ERROR_SUCCESS : GetLastError();
+    if (!terminated) {
+        const int process_exited =
+            WaitForSingleObject(platform->process, 0) == WAIT_OBJECT_0;
+        if (process_exited) {
+            LeaveCriticalSection(&platform->mutex);
             return 1;
         }
-        EnterCriticalSection(&platform->mutex);
+    }
+    if (!terminated) {
         platform->termination_requested = 0;
-        LeaveCriticalSection(&platform->mutex);
+    }
+    LeaveCriticalSection(&platform->mutex);
+    if (!terminated) {
         pty_error_set(out_error,
                       PTY_ERROR_DOMAIN_WIN32,
                       PTY_ERROR_IO,

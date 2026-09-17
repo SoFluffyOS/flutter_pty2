@@ -163,6 +163,14 @@ int main(void)
     active_session = session;
     pty_session_begin_close(session);
     assert(wait_for_session_closed());
+    const PtySize closed_size = {.rows = 24, .columns = 80};
+    PtyError closed_resize_error;
+    assert(pty_session_resize(session, closed_size, &closed_resize_error) ==
+           0);
+    assert(closed_resize_error.kind == PTY_ERROR_CLOSED);
+    PtyError closed_kill_error;
+    assert(pty_session_kill(session, &closed_kill_error) == 0);
+    assert(closed_kill_error.kind == PTY_ERROR_CLOSED);
     pty_session_release(session);
     active_session = NULL;
 

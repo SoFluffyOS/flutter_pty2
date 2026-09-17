@@ -39,6 +39,7 @@
 * Cover `tryWrite` and `flush` in the Windows integration suite.
 * Cover repeated ConPTY resize during active output.
 * Cover Windows close idempotency with queued input and kill during output.
+* Serialize Windows resize and kill against native session shutdown.
 * Document the expanded Windows scheduled verification scope.
 * Make Windows discard output natively after the Dart consumer cancels.
 * Avoid reporting normal Windows ConPTY EOF as an asynchronous I/O error.
