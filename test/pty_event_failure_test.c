@@ -6,10 +6,12 @@
 #if defined(_WIN32)
 #include <windows.h>
 static volatile LONG post_count;
+static volatile LONG spawned_event;
 #else
 #include <stdatomic.h>
 #include <unistd.h>
 static _Atomic int post_count;
+static _Atomic int spawned_event;
 #endif
 static int reject_only_session_closed;
 
@@ -23,6 +25,15 @@ static bool reject_post(Dart_Port_DL port, Dart_CObject *message)
         message->value.as_array.values[0]->value.as_int32;
     if (reject_only_session_closed &&
         event_type != PTY_EVENT_SESSION_CLOSED) {
+#if defined(_WIN32)
+        if (event_type == PTY_EVENT_SPAWNED) {
+            InterlockedExchange(&spawned_event, 1);
+        }
+#else
+        if (event_type == PTY_EVENT_SPAWNED) {
+            atomic_store_explicit(&spawned_event, 1, memory_order_release);
+        }
+#endif
         return true;
     }
 #if defined(_WIN32)
@@ -31,6 +42,15 @@ static bool reject_post(Dart_Port_DL port, Dart_CObject *message)
     atomic_fetch_add_explicit(&post_count, 1, memory_order_relaxed);
 #endif
     return false;
+}
+
+static int spawned_event_received(void)
+{
+#if defined(_WIN32)
+    return InterlockedCompareExchange(&spawned_event, 0, 0) != 0;
+#else
+    return atomic_load_explicit(&spawned_event, memory_order_acquire) != 0;
+#endif
 }
 
 static int posted_event_count(void)
@@ -143,6 +163,11 @@ int main(void)
     assert(posted_event_count() == 1);
 
     reject_only_session_closed = 1;
+#if defined(_WIN32)
+    InterlockedExchange(&spawned_event, 0);
+#else
+    atomic_store_explicit(&spawned_event, 0, memory_order_release);
+#endif
     const char *close_arguments[] = {"-c", "sleep 30"};
     const PtySpawnOptions close_options = {
         .executable = executable,
@@ -158,6 +183,11 @@ int main(void)
     session = NULL;
     assert(pty_session_start(&close_options, &session, &error) == 1);
     assert(session != NULL);
+    for (int attempt = 0; attempt < 500 && !spawned_event_received();
+         attempt++) {
+        wait_milliseconds(10);
+    }
+    assert(spawned_event_received());
     pty_session_begin_close(session);
     for (int attempt = 0; attempt < 500 && !stats_are_zero(); attempt++) {
         wait_milliseconds(10);
