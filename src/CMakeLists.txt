@@ -16,6 +16,8 @@ add_library(flutter_pty2 SHARED
   "common/pty_write_queue.c"
 )
 
+target_compile_features(flutter_pty2 PRIVATE c_std_11)
+
 if (WIN32)
   target_sources(flutter_pty2 PRIVATE
     windows/pty_windows_commandline.c
