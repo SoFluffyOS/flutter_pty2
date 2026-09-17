@@ -1221,16 +1221,30 @@ FFI_PLUGIN_EXPORT void pty_session_discard_output(PtySession *session)
 FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
 {
     if (session == NULL) return;
-    const LONG lifecycle = InterlockedCompareExchange(&session->lifecycle,
-                                                      PTY_LIFECYCLE_CLOSING,
-                                                      PTY_LIFECYCLE_RUNNING);
-    if (lifecycle == PTY_LIFECYCLE_STARTING) {
-        InterlockedExchange(&session->lifecycle, PTY_LIFECYCLE_CLOSING);
-        return;
-    }
-    if (lifecycle != PTY_LIFECYCLE_RUNNING &&
-        lifecycle != PTY_LIFECYCLE_CLOSING) {
-        return;
+    while (true) {
+        const LONG lifecycle = InterlockedCompareExchange(&session->lifecycle,
+                                                          0,
+                                                          0);
+        if (lifecycle == PTY_LIFECYCLE_STARTING) {
+            if (InterlockedCompareExchange(&session->lifecycle,
+                                           PTY_LIFECYCLE_CLOSING,
+                                           PTY_LIFECYCLE_STARTING) ==
+                PTY_LIFECYCLE_STARTING) {
+                return;
+            }
+            continue;
+        }
+        if (lifecycle != PTY_LIFECYCLE_RUNNING &&
+            lifecycle != PTY_LIFECYCLE_CLOSING) {
+            return;
+        }
+        if (lifecycle == PTY_LIFECYCLE_CLOSING) break;
+        if (InterlockedCompareExchange(&session->lifecycle,
+                                       PTY_LIFECYCLE_CLOSING,
+                                       PTY_LIFECYCLE_RUNNING) ==
+            PTY_LIFECYCLE_RUNNING) {
+            break;
+        }
     }
     PtyWindowsPlatform *platform = windows_platform(session);
     if (platform == NULL) return;

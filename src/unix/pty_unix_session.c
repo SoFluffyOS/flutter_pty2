@@ -1043,13 +1043,26 @@ FFI_PLUGIN_EXPORT void pty_session_discard_output(PtySession *session)
 FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
 {
     if (session == NULL) return;
-    int lifecycle = atomic_load_explicit(&session->lifecycle,
-                                         memory_order_acquire);
-    if (lifecycle == PTY_LIFECYCLE_STARTING) {
-        pty_session_mark_closing(session);
-        return;
-    }
-    if (lifecycle == PTY_LIFECYCLE_RUNNING) {
+    while (true) {
+        const int lifecycle = atomic_load_explicit(&session->lifecycle,
+                                                   memory_order_acquire);
+        if (lifecycle == PTY_LIFECYCLE_STARTING) {
+            int expected_lifecycle = PTY_LIFECYCLE_STARTING;
+            if (atomic_compare_exchange_strong_explicit(
+                    &session->lifecycle,
+                    &expected_lifecycle,
+                    PTY_LIFECYCLE_CLOSING,
+                    memory_order_acq_rel,
+                    memory_order_acquire)) {
+                return;
+            }
+            continue;
+        }
+        if (lifecycle != PTY_LIFECYCLE_RUNNING &&
+            lifecycle != PTY_LIFECYCLE_CLOSING) {
+            return;
+        }
+        if (lifecycle == PTY_LIFECYCLE_CLOSING) break;
         int expected_lifecycle = PTY_LIFECYCLE_RUNNING;
         if (!atomic_compare_exchange_strong_explicit(
                 &session->lifecycle,
@@ -1057,10 +1070,9 @@ FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
                 PTY_LIFECYCLE_CLOSING,
                 memory_order_acq_rel,
                 memory_order_acquire)) {
-            return;
+            continue;
         }
-    } else if (lifecycle != PTY_LIFECYCLE_CLOSING) {
-        return;
+        break;
     }
     PtyUnixPlatform *platform = platform_for(session);
     if (platform == NULL) return;

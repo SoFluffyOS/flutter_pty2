@@ -16,6 +16,7 @@
 * Validate terminal dimensions in the native ABI before platform-specific casts.
 * Keep PTY output available after an input-channel failure and release queued
   native writes immediately.
+* Close sessions safely when shutdown races native startup publication.
 * Add native lifecycle, transfer, exit-drain, randomized race, finalizer, and
   platform resource-leak coverage, including scheduled 1 GiB transfers and
   10,000 randomized operations.
