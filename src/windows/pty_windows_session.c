@@ -72,7 +72,7 @@ typedef struct PtyWindowsBootstrap {
 
 static PtyWindowsPlatform *windows_platform(PtySession *session)
 {
-    return session == NULL ? NULL : (PtyWindowsPlatform *)session->platform;
+    return (PtyWindowsPlatform *)pty_session_platform_load(session);
 }
 
 static int handle_posted_session_event(PtySession *session, int posted)
@@ -916,7 +916,7 @@ static DWORD WINAPI windows_bootstrap(void *argument)
     platform->job = job;
     platform->process_id = process_id;
     pty_write_queue_init(&platform->write_queue, session->input_buffer_limit);
-    session->platform = platform;
+    pty_session_platform_store(session, platform);
 
     const int close_requested =
         InterlockedCompareExchange(&session->lifecycle,

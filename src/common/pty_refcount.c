@@ -24,7 +24,7 @@ void pty_session_init(PtySession *session)
     session->input_buffer_limit = 0;
     session->output_window_limit = 0;
     session->output_credit = 0;
-    session->platform = NULL;
+    pty_session_platform_store(session, NULL);
     session->free_function = NULL;
     pty_debug_session_started();
 }

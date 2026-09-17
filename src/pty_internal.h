@@ -34,8 +34,9 @@ typedef void (*PtySessionFreeFunction)(PtySession *session);
  *   pty_session_start initializes the session and publishes it to workers.
  * - output_credit is guarded by the platform mutex after platform publication;
  *   bootstrap initialization happens before any worker can observe it.
- * - platform is assigned once during bootstrap and cleared only on a startup
- *   failure before the session can be released by a worker.
+ * - platform is atomically published once during bootstrap and cleared only on
+ *   a startup failure before the session can be released by a worker. Readers
+ *   use acquire semantics so startup-close races never access a torn pointer.
  * - ref_count is atomic and owns the session allocation across all workers.
  */
 struct PtySession {
@@ -59,9 +60,37 @@ struct PtySession {
     uint64_t input_buffer_limit;
     uint64_t output_window_limit;
     uint64_t output_credit;
-    void *platform;
+#if defined(_WIN32)
+    void *volatile platform;
+#else
+    _Atomic(void *) platform;
+#endif
     PtySessionFreeFunction free_function;
 };
+
+static inline void *pty_session_platform_load(PtySession *session)
+{
+    if (session == NULL) return NULL;
+#if defined(_WIN32)
+    return InterlockedCompareExchangePointer(
+        (PVOID volatile *)&session->platform,
+        NULL,
+        NULL);
+#else
+    return atomic_load_explicit(&session->platform, memory_order_acquire);
+#endif
+}
+
+static inline void pty_session_platform_store(PtySession *session,
+                                               void *platform)
+{
+    if (session == NULL) return;
+#if defined(_WIN32)
+    InterlockedExchangePointer((PVOID volatile *)&session->platform, platform);
+#else
+    atomic_store_explicit(&session->platform, platform, memory_order_release);
+#endif
+}
 
 void pty_session_init(PtySession *session);
 void pty_session_retain(PtySession *session);

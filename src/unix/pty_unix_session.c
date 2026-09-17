@@ -72,7 +72,7 @@ typedef struct PtyUnixBootstrap {
 
 static PtyUnixPlatform *platform_for(PtySession *session)
 {
-    return session == NULL ? NULL : (PtyUnixPlatform *)session->platform;
+    return (PtyUnixPlatform *)pty_session_platform_load(session);
 }
 
 static int handle_posted_session_event(PtySession *session, int posted)
@@ -562,7 +562,7 @@ static void discard_unix_platform(PtySession *session)
     pty_write_queue_dispose(&platform->write_queue);
     pthread_mutex_destroy(&platform->mutex);
     free(platform);
-    session->platform = NULL;
+    pty_session_platform_store(session, NULL);
 }
 
 static void stop_process(PtySession *session)
@@ -728,7 +728,7 @@ static void *bootstrap_worker(void *argument)
     platform->process_id = process_id;
     pty_write_queue_init(&platform->write_queue,
                          session->input_buffer_limit);
-    session->platform = platform;
+    pty_session_platform_store(session, platform);
 
     pthread_mutex_lock(&platform->mutex);
     const int closing = platform->stopping ||

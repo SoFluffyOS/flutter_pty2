@@ -42,6 +42,10 @@ abandon entry point. Abandonment marks the session, requests asynchronous
 shutdown, and releases Dart's reference; it does not join workers or wait for
 a process.
 
+The platform backend pointer is published atomically by the bootstrap worker.
+Close and finalizer paths acquire that pointer before using it, so a close
+during startup cannot race pointer publication.
+
 Every native event post checks its success result. A failed post means the Dart
 endpoint is gone, so native code enters the same abandonment path. Abandonment
 is idempotent: a failed event post and the later `NativeFinalizer` callback can
