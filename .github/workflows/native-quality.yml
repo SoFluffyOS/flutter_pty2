@@ -18,7 +18,7 @@ jobs:
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y cmake
+        run: sudo apt-get update && sudo apt-get install -y clang cmake
 
       - name: Configure strict Unix build
         run: >-
@@ -29,6 +29,17 @@ jobs:
 
       - name: Build strict Unix targets
         run: cmake --build build/strict-unix --parallel 4
+
+      - name: Run Clang static analyzer
+        run: >-
+          clang --analyze
+          -std=c11
+          -DDART_SHARED_LIB
+          -Isrc
+          -Isrc/include
+          -fno-color-diagnostics
+          -o build/strict-unix/flutter_pty2-analysis.plist
+          src/flutter_pty.c
 
   unix-fork-safety:
     strategy:
