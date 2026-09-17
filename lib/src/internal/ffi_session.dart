@@ -174,8 +174,12 @@ final class FfiPtySessionState implements NativeEventHandler {
         error,
       );
       if (result == native.PtyTryWriteResult.PTY_WRITE_ERROR) {
-        throw PtyIoException('Writing to PTY failed',
-            nativeError: readNativeError(error.ref));
+        final exception = PtyIoException(
+          'Writing to PTY failed',
+          nativeError: readNativeError(error.ref),
+        );
+        bindings.pty_session_begin_close(handle);
+        throw exception;
       }
       return switch (result) {
         native.PtyTryWriteResult.PTY_WRITE_ACCEPTED => PtyWriteResult.accepted,

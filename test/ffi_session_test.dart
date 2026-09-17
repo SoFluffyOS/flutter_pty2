@@ -69,6 +69,20 @@ void main() {
     expect(closeCalls, 1);
   });
 
+  test('requests native shutdown when a native write fails', () {
+    _writeErrorCloseCalls = 0;
+    final state = FfiPtySessionState(
+      handle: Pointer<native.PtySession>.fromAddress(1),
+      bindings: native.FlutterPtyBindings.fromLookup(_writeErrorLookup),
+    );
+
+    expect(
+      state.input.tryWrite(Uint8List.fromList([1])),
+      PtyWriteResult.closed,
+    );
+    expect(_writeErrorCloseCalls, 1);
+  });
+
   test('fails closed and requests native shutdown on protocol errors',
       () async {
     _protocolCloseCalls = 0;
@@ -141,6 +155,7 @@ Pointer<T> _fakeLookup<T extends NativeType>(String symbolName) {
 
 int _protocolCloseCalls = 0;
 int _protocolDiscardCalls = 0;
+int _writeErrorCloseCalls = 0;
 
 void _protocolBeginClose(Pointer<native.PtySession> session) {
   _protocolCloseCalls++;
@@ -154,6 +169,24 @@ void _protocolAcknowledgeOutput(
   Pointer<native.PtySession> session,
   int byteCount,
 ) {}
+
+int _writeError(
+  Pointer<native.PtySession> session,
+  int requestId,
+  Pointer<Uint8> bytes,
+  int length,
+  Pointer<native.PtyError> error,
+) {
+  error.ref
+    ..domain = PtyErrorDomain.internal.index + 1
+    ..kind = PtyErrorKind.io.index + 1
+    ..os_code = 5;
+  return native.PtyTryWriteResult.PTY_WRITE_ERROR;
+}
+
+void _writeErrorBeginClose(Pointer<native.PtySession> session) {
+  _writeErrorCloseCalls++;
+}
 
 Pointer<T> _protocolLookup<T extends NativeType>(String symbolName) {
   if (symbolName == 'pty_session_begin_close') {
@@ -170,6 +203,26 @@ Pointer<T> _protocolLookup<T extends NativeType>(String symbolName) {
     return Pointer.fromFunction<
         Void Function(Pointer<native.PtySession>, Uint64)>(
       _protocolAcknowledgeOutput,
+    ).cast();
+  }
+  return Pointer<T>.fromAddress(1);
+}
+
+Pointer<T> _writeErrorLookup<T extends NativeType>(String symbolName) {
+  if (symbolName == 'pty_session_try_write') {
+    return Pointer.fromFunction<
+            Int32 Function(
+              Pointer<native.PtySession>,
+              Uint64,
+              Pointer<Uint8>,
+              Uint64,
+              Pointer<native.PtyError>,
+            )>(_writeError, native.PtyTryWriteResult.PTY_WRITE_ERROR)
+        .cast();
+  }
+  if (symbolName == 'pty_session_begin_close') {
+    return Pointer.fromFunction<Void Function(Pointer<native.PtySession>)>(
+      _writeErrorBeginClose,
     ).cast();
   }
   return Pointer<T>.fromAddress(1);

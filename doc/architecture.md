@@ -99,8 +99,9 @@ without blocking the isolate.
 
 `tryWrite()` submits at most one native-sized request and never waits. An
 accepted request remains tracked until `WRITE_COMPLETE` or an input/session
-failure. `flush()` waits for writes submitted before it was called, including
-accepted `tryWrite()` requests.
+failure. A synchronous native write error fails pending input and requests
+session shutdown. `flush()` waits for writes submitted before it was called,
+including accepted `tryWrite()` requests.
 
 ```text
 write(bytes) --> Dart bounded chunks --> native bounded queue --> PTY input
