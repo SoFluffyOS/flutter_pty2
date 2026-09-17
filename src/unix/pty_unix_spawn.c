@@ -519,6 +519,7 @@ static void cleanup_failed_child(pid_t process_id, int master_fd)
 {
     if (master_fd >= 0) close(master_fd);
     if (process_id <= 0) return;
+    kill(-process_id, SIGKILL);
     kill(process_id, SIGKILL);
     while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
 }

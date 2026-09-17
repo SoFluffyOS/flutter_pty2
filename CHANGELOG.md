@@ -21,6 +21,7 @@
 * Keep native test assertions enabled in release CTest builds.
 * Publish Windows shutdown state before terminating the Job Object.
 * Suppress false Windows I/O errors while a public kill is terminating the job.
+* Kill the Unix PTY process group when post-spawn setup cleanup fails.
 * Complete inflight input futures when a later native write observes closure.
 * Preserve Unix native setup error codes when session initialization fails.
 * Treat failed native event delivery as Dart endpoint abandonment and release
