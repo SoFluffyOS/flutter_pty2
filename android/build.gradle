@@ -1,7 +1,7 @@
 // The Android Gradle Plugin builds the native code with the Android NDK.
 
 group = "io.sofluffy.flutter_pty2"
-version = "1.0"
+version = "1.0.2"
 
 buildscript {
     repositories {
