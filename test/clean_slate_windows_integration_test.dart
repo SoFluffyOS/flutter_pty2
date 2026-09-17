@@ -174,6 +174,34 @@ void main() {
   );
 
   test(
+    'keeps trailing ConPTY output available after process exit until done',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['exit-after-output', '37', 'windows-sentinel'],
+        ),
+      );
+      final outputFuture = session.output.toList();
+      final processExit = await session.processExit;
+      final done = await session.done;
+      final output = await outputFuture;
+      await session.close();
+
+      expect(processExit, isA<PtyExitCode>());
+      if (processExit case PtyExitCode(:final code)) expect(code, 37);
+      expect(done, processExit);
+      expect(
+        utf8.decode(output.expand((chunk) => chunk).toList()),
+        'windows-sentinel',
+      );
+    },
+    skip: skipReason,
+  );
+
+  test(
     'closes cleanly while ConPTY input is queued',
     () async {
       final child = fixture;
