@@ -33,17 +33,25 @@ void main() {
   });
 
   test('flush waits only for writes submitted before it', () async {
+    final requests = <int>[];
     final input = InputFlowController(
-      nativeTryWrite: (_, __) => PtyWriteResult.accepted,
+      nativeTryWrite: (requestId, _) {
+        requests.add(requestId);
+        return PtyWriteResult.accepted;
+      },
     );
     expect(input.tryWrite(Uint8List.fromList([1])), PtyWriteResult.accepted);
     final flush = input.flush();
+    expect(input.tryWrite(Uint8List.fromList([2])), PtyWriteResult.accepted);
     var completed = false;
     flush.then((_) => completed = true);
     await Future<void>.delayed(Duration.zero);
     expect(completed, isFalse);
     input.handleWriteComplete(1);
     await flush;
+    expect(requests, [1, 2]);
+    expect(completed, isTrue);
+    input.handleWriteComplete(2);
   });
 
   test('keeps separate asynchronous writes ordered', () async {
