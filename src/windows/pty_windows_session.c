@@ -748,9 +748,15 @@ static int windows_create_process(const PtySpawnOptions *options,
                                              options->argument_count);
     environment = pty_windows_build_environment(options->environment,
                                                 options->environment_count);
-    working_directory = build_working_directory((char *)options->working_directory);
+    if (options->working_directory != NULL &&
+        options->working_directory[0] != '\0') {
+        working_directory =
+            build_working_directory((char *)options->working_directory);
+    }
     if (command == NULL || environment == NULL ||
-        (options->working_directory != NULL && working_directory == NULL)) {
+        (options->working_directory != NULL &&
+         options->working_directory[0] != '\0' &&
+         working_directory == NULL)) {
         pty_error_set(error,
                       PTY_ERROR_DOMAIN_WIN32,
                       PTY_ERROR_OUT_OF_MEMORY,

@@ -84,6 +84,27 @@ void main() {
   );
 
   test(
+    'treats an empty Windows working directory as inherited',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['exit', '0'],
+          workingDirectory: '',
+        ),
+      );
+      final exit = await session.done;
+      await session.close();
+
+      expect(exit, isA<PtyExitCode>());
+      if (exit case PtyExitCode(:final code)) expect(code, 0);
+    },
+    skip: skipReason,
+  );
+
+  test(
     'reports typed errors for Windows spawn failures',
     () async {
       final child = fixture;
