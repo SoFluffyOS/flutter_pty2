@@ -1,5 +1,6 @@
 ## (Unreleased)
 
+* Request native shutdown when a fatal asynchronous I/O error reaches Dart.
 * Add the clean-slate `Pty.spawn` session API with raw-byte output, async input,
   bounded flow control, typed errors, process lifecycle futures, signals, and
   asynchronous idempotent close.

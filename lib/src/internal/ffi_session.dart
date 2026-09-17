@@ -23,7 +23,9 @@ final class FfiPtySessionState implements NativeEventHandler {
   FfiPtySessionState({
     required this.handle,
     required this.bindings,
+    void Function()? onAsyncError,
   }) {
+    _onAsyncError = onAsyncError;
     _output = OutputFlowController(
       acknowledge: _acknowledgeOutput,
       discardOutput: _discardOutput,
@@ -34,6 +36,7 @@ final class FfiPtySessionState implements NativeEventHandler {
 
   final Pointer<native.PtySession> handle;
   final native.FlutterPtyBindings bindings;
+  late final void Function()? _onAsyncError;
   final _spawnCompleter = Completer<void>();
   final _processExitCompleter = Completer<PtyExit>();
   final _doneCompleter = Completer<PtyExit>();
@@ -45,6 +48,7 @@ final class FfiPtySessionState implements NativeEventHandler {
   bool _outputClosed = false;
   bool _outputDrained = false;
   bool _protocolFailed = false;
+  bool _asyncErrorHandled = false;
 
   OutputFlowController get output => _output;
 
@@ -134,6 +138,8 @@ final class FfiPtySessionState implements NativeEventHandler {
   }
 
   void _handleAsyncError(PtyNativeError nativeError) {
+    if (_asyncErrorHandled) return;
+    _asyncErrorHandled = true;
     final error = PtyIoException('PTY I/O failed', nativeError: nativeError);
     if (!_spawnCompleter.isCompleted) _spawnCompleter.completeError(error);
     _input.handleClosed(error);
@@ -141,6 +147,7 @@ final class FfiPtySessionState implements NativeEventHandler {
       _processExitCompleter.completeError(error);
     }
     if (!_doneCompleter.isCompleted) _doneCompleter.completeError(error);
+    _onAsyncError?.call();
   }
 
   void _maybeCompleteDone() {
@@ -190,6 +197,7 @@ final class FfiPtySession implements PtySession, Finalizable {
         _state = FfiPtySessionState(
           handle: handle,
           bindings: bindings,
+          onAsyncError: () => bindings.pty_session_begin_close(handle),
         );
 
   final Pointer<native.PtySession> handle;

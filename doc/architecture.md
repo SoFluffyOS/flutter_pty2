@@ -143,6 +143,9 @@ being translated into a Job Object termination.
 Native failures are transported as domain, kind, OS code, and message fields.
 Dart maps them to typed `PtyException` subclasses such as
 `PtySpawnException`, `PtyIoException`, and `PtyUnsupportedException`.
+Fatal asynchronous I/O errors fail the session futures, close input, and
+request the idempotent native shutdown path so a failed worker cannot leave
+the process running indefinitely.
 Malformed native event messages are treated as a fatal protocol error: Dart
 fails the session futures, discards buffered output, closes input, and requests
 native shutdown. The event pump remains alive until the native session reports

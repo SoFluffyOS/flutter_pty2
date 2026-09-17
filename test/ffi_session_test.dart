@@ -12,9 +12,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('fails spawn and lifecycle futures on an early async error', () async {
+    var closeCalls = 0;
     final state = FfiPtySessionState(
       handle: Pointer<native.PtySession>.fromAddress(1),
       bindings: native.FlutterPtyBindings.fromLookup(_fakeLookup),
+      onAsyncError: () => closeCalls++,
     );
     final spawned = state.spawned;
     final processExit = state.processExit;
@@ -34,10 +36,37 @@ void main() {
     await expectLater(spawned, throwsA(isA<PtyIoException>()));
     await expectLater(processExit, throwsA(isA<PtyIoException>()));
     await expectLater(done, throwsA(isA<PtyIoException>()));
+    expect(closeCalls, 1);
     expect(
       state.input.tryWrite(Uint8List.fromList([1])),
       PtyWriteResult.closed,
     );
+  });
+
+  test('requests native shutdown only once for repeated async errors',
+      () async {
+    var closeCalls = 0;
+    final state = FfiPtySessionState(
+      handle: Pointer<native.PtySession>.fromAddress(1),
+      bindings: native.FlutterPtyBindings.fromLookup(_fakeLookup),
+      onAsyncError: () => closeCalls++,
+    );
+    const error = NativeAsyncError(
+      PtyNativeError(
+        domain: PtyErrorDomain.posix,
+        kind: PtyErrorKind.io,
+        code: 5,
+        message: 'read failed',
+      ),
+    );
+
+    state.handleNativeEvent(error);
+    state.handleNativeEvent(error);
+
+    await expectLater(state.spawned, throwsA(isA<PtyIoException>()));
+    await expectLater(state.processExit, throwsA(isA<PtyIoException>()));
+    await expectLater(state.done, throwsA(isA<PtyIoException>()));
+    expect(closeCalls, 1);
   });
 
   test('fails closed and requests native shutdown on protocol errors',
