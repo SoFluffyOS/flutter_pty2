@@ -107,3 +107,17 @@ jobs:
           $env:PTY_TEST_CHILD = $fixture.FullName
           $env:PATH = "$($library.DirectoryName);$env:PATH"
           flutter test test/clean_slate_windows_integration_test.dart
+
+      - name: Run configured clean-slate Windows large-transfer tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $library = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build" -Filter flutter_pty2.dll -Recurse | Select-Object -First 1
+          $fixture = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/pty_test_child" -Filter pty_test_child.exe -Recurse | Select-Object -First 1
+          if ($null -eq $library) { throw 'flutter_pty2.dll was not built' }
+          if ($null -eq $fixture) { throw 'pty_test_child.exe was not built' }
+          $env:FLUTTER_PTY2_LIBRARY = $library.FullName
+          $env:PTY_TEST_CHILD = $fixture.FullName
+          $env:PTY_LARGE_TRANSFER_BYTES = '104857600'
+          $env:PATH = "$($library.DirectoryName);$env:PATH"
+          flutter test test/clean_slate_large_transfer_test.dart
