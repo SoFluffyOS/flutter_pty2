@@ -326,7 +326,8 @@ static DWORD WINAPI windows_reader(void *argument)
                                              &length,
                                              NULL);
         if (!read_succeeded || length == 0) {
-            const DWORD read_error = GetLastError();
+            const DWORD read_error = read_succeeded ? ERROR_NO_DATA :
+                                                       GetLastError();
             EnterCriticalSection(&platform->mutex);
             const int closing = platform->stopping;
             LeaveCriticalSection(&platform->mutex);
