@@ -139,10 +139,12 @@ static int create_wake_pipe(PtyUnixPlatform *platform)
         set_nonblocking_cloexec(platform->wake_pipe[1]) == 0) {
         return 0;
     }
+    const int error_number = errno;
     close(platform->wake_pipe[0]);
     close(platform->wake_pipe[1]);
     platform->wake_pipe[0] = -1;
     platform->wake_pipe[1] = -1;
+    errno = error_number;
     return -1;
 }
 
@@ -683,26 +685,35 @@ static void *bootstrap_worker(void *argument)
     }
 
     PtyUnixPlatform *platform = calloc(1, sizeof(*platform));
+    int setup_error = ENOMEM;
     int mutex_initialized = 0;
     if (platform != NULL) {
         platform->master_fd = -1;
         platform->slave_fd = -1;
         platform->wake_pipe[0] = -1;
         platform->wake_pipe[1] = -1;
-        if (pthread_mutex_init(&platform->mutex, NULL) == 0) {
+        const int mutex_result = pthread_mutex_init(&platform->mutex, NULL);
+        if (mutex_result == 0) {
             mutex_initialized = 1;
+        } else {
+            setup_error = mutex_result;
         }
     }
     int retained_slave_fd = -1;
-    if (platform != NULL && mutex_initialized && create_wake_pipe(platform) == 0) {
-        retained_slave_fd = fcntl(slave_fd, F_DUPFD_CLOEXEC, 4);
-        if (retained_slave_fd >= 0) {
-            close(slave_fd);
-            slave_fd = retained_slave_fd;
+    if (platform != NULL && mutex_initialized) {
+        if (create_wake_pipe(platform) == 0) {
+            retained_slave_fd = fcntl(slave_fd, F_DUPFD_CLOEXEC, 4);
+            if (retained_slave_fd >= 0) {
+                close(slave_fd);
+                slave_fd = retained_slave_fd;
+            } else {
+                setup_error = errno;
+            }
+        } else {
+            setup_error = errno;
         }
     }
     if (platform == NULL || !mutex_initialized || retained_slave_fd < 0) {
-        const int error_number = errno == 0 ? ENOMEM : errno;
         if (platform != NULL) {
             if (platform->wake_pipe[0] >= 0) close(platform->wake_pipe[0]);
             if (platform->wake_pipe[1] >= 0) close(platform->wake_pipe[1]);
@@ -713,7 +724,7 @@ static void *bootstrap_worker(void *argument)
         close(slave_fd);
         kill(process_id, SIGKILL);
         while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
-        pty_error_set_errno(&error, PTY_ERROR_OUT_OF_MEMORY, error_number,
+        pty_error_set_errno(&error, PTY_ERROR_OUT_OF_MEMORY, setup_error,
                             "allocating Unix PTY session failed");
         post_session_event(session,
                            pty_post_spawn_failed(session->event_port, &error));
