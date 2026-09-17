@@ -14,7 +14,8 @@ FORBIDDEN_PATTERNS = (
     r"\bPATH\b",
     r"\bpthread_[A-Za-z0-9_]*",
     r"\bDart_[A-Za-z0-9_]*",
-    r"\bexecvp\s*\(",
+    r"\b(?:execl|execle|execlp|execv|execvp|execvpe)\s*\(",
+    r"\b(?:posix_spawn|posix_spawnp|system|popen)\s*\(",
 )
 
 
@@ -41,6 +42,13 @@ def main() -> int:
         print("forbidden helper in Unix post-fork child branch:", file=sys.stderr)
         for pattern in violations:
             print(f"  {pattern}", file=sys.stderr)
+        return 1
+
+    if re.search(r"\bexecve\s*\(", child_path) is None:
+        print(
+            "Unix post-fork child branch must call execve directly",
+            file=sys.stderr,
+        )
         return 1
 
     print(f"Unix post-fork child path audit passed: {source_path}")
