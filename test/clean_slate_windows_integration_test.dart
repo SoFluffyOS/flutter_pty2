@@ -320,7 +320,10 @@ void main() {
       ];
 
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      await session.close().timeout(const Duration(seconds: 5));
+      final firstClose = session.close();
+      final secondClose = session.close();
+      expect(identical(firstClose, secondClose), isTrue);
+      await firstClose.timeout(const Duration(seconds: 5));
       await Future.wait(writes);
     },
     skip: skipReason,
@@ -353,6 +356,41 @@ void main() {
         chunks.expand((chunk) => chunk).toList(),
         List<int>.generate(transferSize, (index) => index % 251),
       );
+    },
+    skip: skipReason,
+  );
+
+  test(
+    'kills a ConPTY while output is active',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['slow-output', '100000000', '1'],
+        ),
+      );
+      final firstOutput = Completer<void>();
+      final outputDone = Completer<void>();
+      final subscription = session.output.listen(
+        (_) {
+          if (!firstOutput.isCompleted) firstOutput.complete();
+        },
+        onDone: outputDone.complete,
+      );
+      try {
+        await firstOutput.future.timeout(const Duration(seconds: 5));
+        session.kill();
+        final exit = await session.done.timeout(const Duration(seconds: 5));
+        await outputDone.future.timeout(const Duration(seconds: 5));
+
+        expect(exit, isA<PtyExitCode>());
+        if (exit case PtyExitCode(:final code)) expect(code, 1);
+      } finally {
+        await subscription.cancel();
+        await session.close();
+      }
     },
     skip: skipReason,
   );
