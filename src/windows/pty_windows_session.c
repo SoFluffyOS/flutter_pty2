@@ -14,7 +14,7 @@
 #define PTY_WINDOWS_IO_BUFFER_SIZE (64 * 1024)
 
 /*
- * The platform mutex guards stop/close state, worker completion flags,
+ * The platform mutex guards stop/termination state, worker completion flags,
  * backpressure flags, input/output closure flags, and the closed-event guard.
  * The process, ConPTY, pipe, job, and process-id handles are initialized by
  * bootstrap before publication and remain stable until final teardown. Worker
@@ -47,6 +47,7 @@ typedef struct PtyWindowsPlatform {
     int close_started;
     int close_done;
     int stopping;
+    int termination_requested;
     int write_backpressured;
     int discard_output;
     int output_closed;
@@ -204,13 +205,14 @@ static DWORD WINAPI windows_reader(void *argument)
                                                        GetLastError();
             EnterCriticalSection(&platform->mutex);
             const int closing = platform->stopping;
+            const int termination_requested = platform->termination_requested;
             LeaveCriticalSection(&platform->mutex);
             const int process_exited =
                 InterlockedCompareExchange(&session->process_exited,
                                            0,
                                            0) != 0 ||
                 WaitForSingleObject(platform->process, 0) == WAIT_OBJECT_0;
-            if (!closing && !process_exited) {
+            if (!closing && !termination_requested && !process_exited) {
                 windows_post_error(session,
                                    PTY_ERROR_IO,
                                    read_error,
@@ -896,14 +898,21 @@ FFI_PLUGIN_EXPORT int32_t pty_session_kill(PtySession *session,
                       "PTY session is closed");
         return 0;
     }
+    EnterCriticalSection(&platform->mutex);
     if (InterlockedCompareExchange(&session->process_exited, 0, 0) != 0) {
+        LeaveCriticalSection(&platform->mutex);
         return 1;
     }
+    platform->termination_requested = 1;
+    LeaveCriticalSection(&platform->mutex);
     if (!TerminateJobObject(platform->job, 1)) {
         const DWORD error_code = GetLastError();
         if (WaitForSingleObject(platform->process, 0) == WAIT_OBJECT_0) {
             return 1;
         }
+        EnterCriticalSection(&platform->mutex);
+        platform->termination_requested = 0;
+        LeaveCriticalSection(&platform->mutex);
         pty_error_set(out_error,
                       PTY_ERROR_DOMAIN_WIN32,
                       PTY_ERROR_IO,
