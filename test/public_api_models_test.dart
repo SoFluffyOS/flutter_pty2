@@ -35,6 +35,21 @@ void main() {
   });
 
   group('PtyEnvironment', () {
+    test('supports inherited overrides and removals', () {
+      const environment = PtyEnvironment.inherit(
+        overrides: {'PTY_TEST_OVERRIDE': 'override'},
+        remove: {'PATH'},
+      );
+
+      final result = buildEnvironment(
+        environment,
+        caseInsensitive: false,
+      );
+
+      expect(result['PTY_TEST_OVERRIDE'], 'override');
+      expect(result['PATH'], isNull);
+    });
+
     test('supports replacement and Windows key normalization', () {
       const environment = PtyEnvironment.replace({
         'Path': 'base',
