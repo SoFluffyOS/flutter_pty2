@@ -12,24 +12,72 @@ sealed class NativeEvent {
     }
     final eventType = _readInt(message, 0);
     return switch (eventType) {
-      1 => NativeSpawned(
-          pid: _readInt(message, 1),
-          capabilities: _readInt(message, 2),
-        ),
-      2 => NativeSpawnFailed(_readError(message, 1)),
-      3 => NativeOutput(_readBytes(message, 1)),
-      4 => const NativeOutputClosed(),
-      5 => NativeWriteComplete(_readInt(message, 1)),
-      6 => const NativeWritable(),
-      7 => NativeInputClosed(_readError(message, 1)),
-      8 => NativeProcessExit(
-          exit: _readExit(message, 1),
-        ),
-      9 => NativeAsyncError(_readError(message, 1)),
-      10 => const NativeSessionClosed(),
+      1 => _parseSpawned(message),
+      2 => _parseSpawnFailed(message),
+      3 => _parseOutput(message),
+      4 => _parseOutputClosed(message),
+      5 => _parseWriteComplete(message),
+      6 => _parseWritable(message),
+      7 => _parseInputClosed(message),
+      8 => _parseProcessExit(message),
+      9 => _parseAsyncError(message),
+      10 => _parseSessionClosed(message),
       _ => throw FormatException('Unknown native event type: $eventType'),
     };
   }
+}
+
+NativeEvent _parseSpawned(List<Object?> message) {
+  _expectLength(message, 3);
+  return NativeSpawned(
+    pid: _readInt(message, 1),
+    capabilities: _readInt(message, 2),
+  );
+}
+
+NativeEvent _parseSpawnFailed(List<Object?> message) {
+  _expectLength(message, 5);
+  return NativeSpawnFailed(_readError(message, 1));
+}
+
+NativeEvent _parseOutput(List<Object?> message) {
+  _expectLength(message, 2);
+  return NativeOutput(_readBytes(message, 1));
+}
+
+NativeEvent _parseOutputClosed(List<Object?> message) {
+  _expectLength(message, 1);
+  return const NativeOutputClosed();
+}
+
+NativeEvent _parseWriteComplete(List<Object?> message) {
+  _expectLength(message, 2);
+  return NativeWriteComplete(_readInt(message, 1));
+}
+
+NativeEvent _parseWritable(List<Object?> message) {
+  _expectLength(message, 1);
+  return const NativeWritable();
+}
+
+NativeEvent _parseInputClosed(List<Object?> message) {
+  _expectLength(message, 5);
+  return NativeInputClosed(_readError(message, 1));
+}
+
+NativeEvent _parseProcessExit(List<Object?> message) {
+  _expectLength(message, 3);
+  return NativeProcessExit(exit: _readExit(message, 1));
+}
+
+NativeEvent _parseAsyncError(List<Object?> message) {
+  _expectLength(message, 5);
+  return NativeAsyncError(_readError(message, 1));
+}
+
+NativeEvent _parseSessionClosed(List<Object?> message) {
+  _expectLength(message, 1);
+  return const NativeSessionClosed();
 }
 
 final class NativeSpawned extends NativeEvent {
@@ -107,6 +155,14 @@ Uint8List _readBytes(List<Object?> message, int index) {
   }
   if (message[index] case final Uint8List bytes) return bytes;
   throw FormatException('Native event field $index must be Uint8List');
+}
+
+void _expectLength(List<Object?> message, int expected) {
+  if (message.length == expected) return;
+  throw FormatException(
+    'Native event type ${message[0]} must contain exactly $expected fields; '
+    'got ${message.length}',
+  );
 }
 
 PtyNativeError _readError(List<Object?> message, int index) {

@@ -69,5 +69,13 @@ void main() {
       ]),
       throwsFormatException,
     );
+    expect(
+      () => NativeEvent.parse(<Object?>[1, 42, 7, 8]),
+      throwsFormatException,
+    );
+    expect(
+      () => NativeEvent.parse(<Object?>[4, 'unexpected']),
+      throwsFormatException,
+    );
   });
 }
