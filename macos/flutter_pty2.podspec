@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'flutter_pty2'
-  s.version          = '1.0.0'
+  s.version          = '1.0.2'
   s.summary          = 'Flutter FFI pseudo-terminal plugin.'
   s.description      = <<-DESC
 Flutter FFI pseudo-terminal plugin for spawning and controlling terminal processes.
@@ -19,7 +19,7 @@ Flutter FFI pseudo-terminal plugin for spawning and controlling terminal process
   s.source_files     = 'flutter_pty2/Sources/flutter_pty2/**/*'
   s.dependency 'FlutterMacOS'
 
-  s.platform = :osx, '10.11'
+  s.platform = :osx, '10.15'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.swift_version = '5.0'
 end
