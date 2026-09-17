@@ -32,6 +32,7 @@
   native-quality CI.
 * Verify clean-slate Android output and input integration on an API 35 emulator.
 * Add scheduled macOS AddressSanitizer and UndefinedBehaviorSanitizer coverage.
+* Add scheduled Windows runtime, stress, and large-transfer coverage.
 * Make Windows discard output natively after the Dart consumer cancels.
 * Avoid reporting normal Windows ConPTY EOF as an asynchronous I/O error.
 * Reject native writes as soon as session shutdown begins.
