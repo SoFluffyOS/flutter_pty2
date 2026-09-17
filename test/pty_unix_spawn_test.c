@@ -141,6 +141,26 @@ static void assert_path_permission_failure_is_preserved(void)
     assert(rmdir(directory) == 0);
 }
 
+static void assert_exec_not_found_failure_is_preserved(void)
+{
+    char executable_template[] = "/tmp/flutter-pty-exec-XXXXXX";
+    const int descriptor = mkstemp(executable_template);
+    assert(descriptor >= 0);
+    const char script[] = "#!/path/that/does/not/exist\n";
+    assert(write(descriptor, script, sizeof(script) - 1) ==
+           (ssize_t)(sizeof(script) - 1));
+    assert(close(descriptor) == 0);
+    assert(chmod(executable_template, S_IRWXU) == 0);
+
+    const char *arguments[] = {NULL};
+    const PtySpawnOptions options = base_options(executable_template,
+                                                 arguments,
+                                                 0,
+                                                 NULL);
+    assert_spawn_failure(&options, PTY_ERROR_NOT_FOUND, ENOENT);
+    assert(unlink(executable_template) == 0);
+}
+
 int main(void)
 {
     const char *invalid_arguments[] = {NULL};
@@ -163,6 +183,7 @@ int main(void)
 
     assert_fd_three_is_not_inherited();
     assert_path_permission_failure_is_preserved();
+    assert_exec_not_found_failure_is_preserved();
 
     const char *arguments[] = {"-c", "printf '%s' \"$PTY_TEST_VALUE\"", NULL};
     const char *environment[] = {"PATH=/usr/bin:/bin", "PTY_TEST_VALUE=spawn-ok"};

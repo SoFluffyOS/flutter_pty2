@@ -22,6 +22,7 @@
 * Preserve typed working-directory errors before relative executable lookup.
 * Serialize Unix process reaping with signals and termination requests.
 * Preserve HRESULT values in Windows ConPTY spawn and resize errors.
+* Preserve not-found classification for failures reported by Unix `execve`.
 * Add native lifecycle, transfer, exit-drain, randomized race, finalizer, and
   platform resource-leak coverage, including scheduled 1 GiB transfers and
   10,000 randomized operations.

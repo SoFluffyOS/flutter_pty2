@@ -781,11 +781,14 @@ int pty_unix_spawn(const PtySpawnOptions *options,
                           EIO,
                           "invalid exec status response");
         } else {
-            const PtyErrorKind kind = child_error.error_number == EACCES
-                                          ? PTY_ERROR_PERMISSION_DENIED
-                                          : child_error.stage == PTY_CHILD_STAGE_CHDIR
-                                              ? PTY_ERROR_WORKING_DIRECTORY
-                                              : PTY_ERROR_SPAWN_FAILED;
+            PtyErrorKind kind = PTY_ERROR_SPAWN_FAILED;
+            if (child_error.stage == PTY_CHILD_STAGE_CHDIR) {
+                kind = PTY_ERROR_WORKING_DIRECTORY;
+            } else if (child_error.error_number == EACCES) {
+                kind = PTY_ERROR_PERMISSION_DENIED;
+            } else if (child_error.error_number == ENOENT) {
+                kind = PTY_ERROR_NOT_FOUND;
+            }
             pty_error_set_errno(error,
                                 kind,
                                 child_error.error_number,
