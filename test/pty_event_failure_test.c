@@ -61,6 +61,41 @@ static int stats_are_zero(void)
 
 int main(void)
 {
+    Dart_PostCObject_Type saved_post_object = Dart_PostCObject_DL;
+    Dart_PostCObject_DL = NULL;
+#if defined(_WIN32)
+    const char *unavailable_executable = getenv("PTY_TEST_CHILD_WINDOWS");
+    if (unavailable_executable == NULL) {
+        unavailable_executable = "C:\\pty_test_child.exe";
+    }
+    const char *unavailable_arguments[] = {"exit", "0"};
+    const char *unavailable_environment[] = {"PATH=C:\\Windows\\System32"};
+#else
+    const char *unavailable_executable = "/bin/sh";
+    const char *unavailable_arguments[] = {"-c", "exit 0"};
+    const char *unavailable_environment[] = {"PATH=/usr/bin:/bin"};
+#endif
+    const PtySpawnOptions unavailable_options = {
+        .executable = unavailable_executable,
+        .arguments = unavailable_arguments,
+        .argument_count = 2,
+        .environment = unavailable_environment,
+        .environment_count = 1,
+        .size = {.rows = 24, .columns = 80},
+        .input_buffer_bytes = 64 * 1024,
+        .output_window_bytes = 16 * 1024,
+        .event_port = 1,
+    };
+    PtySession *unavailable_session = NULL;
+    PtyError unavailable_error;
+    assert(pty_session_start(&unavailable_options,
+                              &unavailable_session,
+                              &unavailable_error) == 0);
+    assert(unavailable_session == NULL);
+    assert(unavailable_error.domain == PTY_ERROR_DOMAIN_INTERNAL);
+    assert(unavailable_error.kind == PTY_ERROR_INTERNAL);
+    Dart_PostCObject_DL = saved_post_object;
+
     Dart_PostCObject_DL = reject_post;
 #if defined(_WIN32)
     const char *executable = getenv("PTY_TEST_CHILD_WINDOWS");

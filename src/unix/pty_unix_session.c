@@ -856,6 +856,14 @@ FFI_PLUGIN_EXPORT int32_t pty_session_start(const PtySpawnOptions *options,
 {
     pty_error_clear(out_error);
     if (out_session != NULL) *out_session = NULL;
+    if (Dart_PostCObject_DL == NULL) {
+        pty_error_set(out_error,
+                      PTY_ERROR_DOMAIN_INTERNAL,
+                      PTY_ERROR_INTERNAL,
+                      0,
+                      "Dart API is unavailable");
+        return 0;
+    }
     if (options == NULL || out_session == NULL || options->executable == NULL ||
         options->executable[0] == '\0' || options->argument_count < 0 ||
         options->environment_count < 0 || options->input_buffer_bytes == 0 ||
