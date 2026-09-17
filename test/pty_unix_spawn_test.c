@@ -222,5 +222,17 @@ int main(void)
     assert_spawn_failure(&bad_directory,
                          PTY_ERROR_WORKING_DIRECTORY,
                          ENOENT);
+
+    const char *relative_environment[] = {"PATH=."};
+    PtySpawnOptions bad_relative_directory = base_options(
+        "sh",
+        missing_arguments,
+        0,
+        "/path/that/does/not/exist");
+    bad_relative_directory.environment = relative_environment;
+    bad_relative_directory.environment_count = 1;
+    assert_spawn_failure(&bad_relative_directory,
+                         PTY_ERROR_WORKING_DIRECTORY,
+                         ENOENT);
     return 0;
 }

@@ -12,6 +12,7 @@
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/select.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
@@ -291,6 +292,27 @@ static int access_path(const char *path, const char *working_directory)
     return result;
 }
 
+static int validate_working_directory(const char *path, PtyError *error)
+{
+    if (path == NULL || path[0] == '\0') return 1;
+    struct stat status;
+    if (stat(path, &status) != 0) {
+        pty_error_set_errno(error,
+                            PTY_ERROR_WORKING_DIRECTORY,
+                            errno,
+                            "checking working directory failed");
+        return 0;
+    }
+    if (!S_ISDIR(status.st_mode)) {
+        pty_error_set_errno(error,
+                            PTY_ERROR_WORKING_DIRECTORY,
+                            ENOTDIR,
+                            "working directory is not a directory");
+        return 0;
+    }
+    return 1;
+}
+
 static char *resolve_executable(const PtySpawnOptions *options,
                                 PtyError *error)
 {
@@ -528,6 +550,9 @@ int pty_unix_spawn(const PtySpawnOptions *options,
                       PTY_ERROR_INVALID_ARGUMENT,
                       EINVAL,
                       "invalid Unix PTY size");
+        return 0;
+    }
+    if (!validate_working_directory(options->working_directory, error)) {
         return 0;
     }
 
