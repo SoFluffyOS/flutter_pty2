@@ -6,6 +6,47 @@ on:
   workflow_dispatch:
 
 jobs:
+  unix-fork-safety:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
+      - name: Build native library
+        run: >-
+          cmake -S src -B build/native
+          -DCMAKE_BUILD_TYPE=Release
+          && cmake --build build/native --parallel 4
+
+      - name: Run Linux fork-safety test
+        if: runner.os == 'Linux'
+        env:
+          FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
+        run: flutter test test/clean_slate_fork_safety_test.dart
+
+      - name: Run macOS fork-safety test
+        if: runner.os == 'macOS'
+        env:
+          FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.dylib
+        run: flutter test test/clean_slate_fork_safety_test.dart
+
   dart-lifecycle-stress:
     runs-on: ubuntu-latest
     steps:
