@@ -143,6 +143,10 @@ being translated into a Job Object termination.
 Native failures are transported as domain, kind, OS code, and message fields.
 Dart maps them to typed `PtyException` subclasses such as
 `PtySpawnException`, `PtyIoException`, and `PtyUnsupportedException`.
+Malformed native event messages are treated as a fatal protocol error: Dart
+fails the session futures, discards buffered output, closes input, and requests
+native shutdown. The event pump remains alive until the native session reports
+`SESSION_CLOSED`, so deterministic `close()` still completes normally.
 Capabilities are reported by the backend, so callers can distinguish POSIX
 signals, pixel dimensions, reliable process-tree cleanup, and ConPTY support
 without inferring behavior from the host platform.
