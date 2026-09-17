@@ -815,7 +815,12 @@ static void *bootstrap_worker(void *argument)
         pthread_mutex_lock(&platform->mutex);
         platform->stopping = 1;
         platform->waiter_done = 1;
-        platform->close_done = 1;
+        if (!platform->close_started) {
+            // Reserve synchronous cleanup so a concurrent close cannot start
+            // a worker after this bootstrap worker returns.
+            platform->close_started = 1;
+            platform->close_done = 1;
+        }
         pthread_mutex_unlock(&platform->mutex);
         stop_process(session);
         wake_reactor(platform);
@@ -840,7 +845,12 @@ static void *bootstrap_worker(void *argument)
                                                  memory_order_acquire)) {
         pthread_mutex_lock(&platform->mutex);
         platform->stopping = 1;
-        platform->close_done = 1;
+        if (!platform->close_started) {
+            // The lifecycle transition can race close() before the close
+            // worker is published. Reserve cleanup for this bootstrap path.
+            platform->close_started = 1;
+            platform->close_done = 1;
+        }
         pthread_mutex_unlock(&platform->mutex);
         stop_process(session);
         wake_reactor(platform);

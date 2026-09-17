@@ -434,6 +434,16 @@ static void windows_finish_worker_startup_failure(PtySession *session,
     PtyWindowsPlatform *platform = windows_platform(session);
     if (platform == NULL) return;
 
+    int synchronous_close = 0;
+    EnterCriticalSection(&platform->mutex);
+    if (!platform->close_started) {
+        // Reserve synchronous cleanup so a concurrent close cannot publish a
+        // worker after this bootstrap path begins tearing down the session.
+        platform->close_started = 1;
+        synchronous_close = 1;
+    }
+    LeaveCriticalSection(&platform->mutex);
+
     windows_stop_process(platform);
     if (process_thread != NULL) {
         ResumeThread(process_thread);
@@ -452,7 +462,7 @@ static void windows_finish_worker_startup_failure(PtySession *session,
     if (!platform->reader_started) platform->reader_done = 1;
     if (!platform->writer_started) platform->writer_done = 1;
     if (!platform->waiter_started) platform->waiter_done = 1;
-    platform->close_done = 1;
+    if (synchronous_close) platform->close_done = 1;
     LeaveCriticalSection(&platform->mutex);
 
     pty_session_mark_closing(session);
@@ -663,15 +673,27 @@ static DWORD WINAPI windows_bootstrap(void *argument)
                                    PTY_LIFECYCLE_RUNNING,
                                    PTY_LIFECYCLE_STARTING) !=
         PTY_LIFECYCLE_STARTING) {
+        int synchronous_close = 0;
+        EnterCriticalSection(&platform->mutex);
+        if (!platform->close_started) {
+            // Reserve synchronous cleanup so a concurrent close cannot
+            // publish a worker after this bootstrap path begins teardown.
+            platform->close_started = 1;
+            synchronous_close = 1;
+        }
+        LeaveCriticalSection(&platform->mutex);
+
         windows_stop_process(platform);
         ResumeThread(process_thread);
         CloseHandle(process_thread);
         if (platform->reader_started) WaitForSingleObject(platform->reader_thread, INFINITE);
         if (platform->writer_started) WaitForSingleObject(platform->writer_thread, INFINITE);
         if (platform->waiter_started) WaitForSingleObject(platform->waiter_thread, INFINITE);
-        EnterCriticalSection(&platform->mutex);
-        platform->close_done = 1;
-        LeaveCriticalSection(&platform->mutex);
+        if (synchronous_close) {
+            EnterCriticalSection(&platform->mutex);
+            platform->close_done = 1;
+            LeaveCriticalSection(&platform->mutex);
+        }
         windows_post_startup_cancelled(session);
         windows_maybe_post_closed(session);
         windows_free_options(&bootstrap->options);
