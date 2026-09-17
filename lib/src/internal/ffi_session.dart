@@ -44,6 +44,7 @@ final class FfiPtySessionState implements NativeEventHandler {
   PtyCapabilities? _capabilities;
   bool _outputClosed = false;
   bool _outputDrained = false;
+  bool _protocolFailed = false;
 
   OutputFlowController get output => _output;
 
@@ -119,7 +120,12 @@ final class FfiPtySessionState implements NativeEventHandler {
 
   @override
   void handleProtocolError(String message) {
+    if (_protocolFailed) return;
+    _protocolFailed = true;
     final error = StateError(message);
+    _input.handleClosed(error);
+    _output.closeAndDiscard();
+    bindings.pty_session_begin_close(handle);
     if (!_spawnCompleter.isCompleted) _spawnCompleter.completeError(error);
     if (!_processExitCompleter.isCompleted) {
       _processExitCompleter.completeError(error);
