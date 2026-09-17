@@ -122,6 +122,9 @@ and uses `execve()` with an explicit environment. A close-on-exec status pipe
 communicates `setsid`, controlling-terminal, `dup2`, `chdir`, and `execve`
 failures from the child without allocating after `fork()`.
 
+Native-quality CI also spawns PTYs while allocator-heavy Dart sibling isolates
+are active, guarding the fork boundary against inherited runtime state.
+
 POSIX signals are sent to the configured process, process group, or foreground
 process group. Descendants detached from that process group are outside the
 guaranteed cleanup boundary.

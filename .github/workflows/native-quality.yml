@@ -29,6 +29,11 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           && cmake --build build/native --parallel 4
 
+      - name: Run Dart fork-safety test
+        env:
+          FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
+        run: flutter test test/clean_slate_fork_safety_test.dart
+
       - name: Run Dart finalizer test
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
