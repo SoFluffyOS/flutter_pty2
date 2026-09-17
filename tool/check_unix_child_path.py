@@ -9,7 +9,9 @@ import sys
 CHILD_START = "    if (child == 0) {"
 CHILD_END = "    }\n\n    close(status_fd);"
 FORBIDDEN_PATTERNS = (
-    r"\b(?:malloc|calloc|realloc|free|strdup|getenv|snprintf|printf)\s*\(",
+    r"\b(?:malloc|calloc|realloc|free|getenv|snprintf|printf)\s*\(",
+    r"\bstr[A-Za-z0-9_]*\s*\(",
+    r"\bPATH\b",
     r"\bpthread_[A-Za-z0-9_]*",
     r"\bDart_[A-Za-z0-9_]*",
     r"\bexecvp\s*\(",
