@@ -166,6 +166,44 @@ jobs:
           $env:PATH = "$($library.DirectoryName);$env:PATH"
           flutter test test/clean_slate_windows_integration_test.dart
 
+      - name: Run Windows Dart lifecycle stress
+        shell: pwsh
+        run: |
+          $library = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/native" -Filter flutter_pty2.dll -Recurse | Select-Object -First 1
+          $fixture = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/pty_test_child" -Filter pty_test_child.exe -Recurse | Select-Object -First 1
+          if ($null -eq $library) { throw 'flutter_pty2.dll was not built' }
+          if ($null -eq $fixture) { throw 'pty_test_child.exe was not built' }
+          $env:FLUTTER_PTY2_LIBRARY = $library.FullName
+          $env:PTY_TEST_CHILD = $fixture.FullName
+          $env:PATH = "$($library.DirectoryName);$env:PATH"
+          flutter test test/clean_slate_lifecycle_stress_test.dart
+
+      - name: Run Windows randomized stress
+        shell: pwsh
+        run: |
+          $library = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/native" -Filter flutter_pty2.dll -Recurse | Select-Object -First 1
+          $fixture = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/pty_test_child" -Filter pty_test_child.exe -Recurse | Select-Object -First 1
+          if ($null -eq $library) { throw 'flutter_pty2.dll was not built' }
+          if ($null -eq $fixture) { throw 'pty_test_child.exe was not built' }
+          $env:FLUTTER_PTY2_LIBRARY = $library.FullName
+          $env:PTY_TEST_CHILD = $fixture.FullName
+          $env:PTY_RANDOM_STRESS_OPERATIONS = '10000'
+          $env:PATH = "$($library.DirectoryName);$env:PATH"
+          flutter test test/clean_slate_random_stress_test.dart
+
+      - name: Run Windows exit-drain stress
+        shell: pwsh
+        run: |
+          $library = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/native" -Filter flutter_pty2.dll -Recurse | Select-Object -First 1
+          $fixture = Get-ChildItem -Path "$env:GITHUB_WORKSPACE/build/pty_test_child" -Filter pty_test_child.exe -Recurse | Select-Object -First 1
+          if ($null -eq $library) { throw 'flutter_pty2.dll was not built' }
+          if ($null -eq $fixture) { throw 'pty_test_child.exe was not built' }
+          $env:FLUTTER_PTY2_LIBRARY = $library.FullName
+          $env:PTY_TEST_CHILD = $fixture.FullName
+          $env:PTY_EXIT_DRAIN_CYCLES = '10000'
+          $env:PATH = "$($library.DirectoryName);$env:PATH"
+          flutter test test/clean_slate_exit_drain_stress_test.dart
+
       - name: Run 1 GiB Windows transfer
         shell: pwsh
         run: |

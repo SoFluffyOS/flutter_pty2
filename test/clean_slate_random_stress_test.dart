@@ -16,12 +16,13 @@ void main() {
     'PTY_RANDOM_STRESS_MAX_ACTIONS',
     fallback: 32,
   );
-  final configured = (Platform.isLinux || Platform.isMacOS) &&
-      library?.isNotEmpty == true &&
-      fixture?.isNotEmpty == true;
+  final configured =
+      (Platform.isLinux || Platform.isMacOS || Platform.isWindows) &&
+          library?.isNotEmpty == true &&
+          fixture?.isNotEmpty == true;
   final skipReason = switch (configured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on Linux or macOS '
+    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
         'to run randomized stress.',
   };
 

@@ -8,12 +8,13 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
   final fixture = Platform.environment['PTY_TEST_CHILD'];
-  final configured = (Platform.isLinux || Platform.isMacOS) &&
-      library?.isNotEmpty == true &&
-      fixture?.isNotEmpty == true;
+  final configured =
+      (Platform.isLinux || Platform.isMacOS || Platform.isWindows) &&
+          library?.isNotEmpty == true &&
+          fixture?.isNotEmpty == true;
   final skipReason = switch (configured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on Linux or macOS '
+    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
         'to run exit-drain stress.',
   };
 

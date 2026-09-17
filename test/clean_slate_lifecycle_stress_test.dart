@@ -5,21 +5,35 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
-  final nativeConfigured =
-      (Platform.isLinux || Platform.isMacOS) && library?.isNotEmpty == true;
+  final fixture = Platform.environment['PTY_TEST_CHILD'];
+  final nativeConfigured = switch (Platform.isWindows) {
+    true => library?.isNotEmpty == true && fixture?.isNotEmpty == true,
+    false =>
+      (Platform.isLinux || Platform.isMacOS) && library?.isNotEmpty == true,
+  };
   final skipReason = switch (nativeConfigured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY on Linux or macOS to run lifecycle stress.',
+    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
+        'platform to run lifecycle stress.',
   };
 
   test(
     'completes 1000 spawn, done, and close cycles',
     () async {
+      final child = switch (Platform.isWindows) {
+        true => fixture,
+        false => '/bin/sh',
+      };
+      if (child == null) return;
+      final arguments = switch (Platform.isWindows) {
+        true => const ['exit', '0'],
+        false => const ['-c', 'exit 0'],
+      };
       for (var cycle = 0; cycle < 1000; cycle++) {
         final session = await Pty.spawn(
-          const PtySpawnOptions(
-            executable: '/bin/sh',
-            arguments: ['-c', 'exit 0'],
+          PtySpawnOptions(
+            executable: child,
+            arguments: arguments,
           ),
         );
         final exit = await session.done.timeout(const Duration(seconds: 5));
