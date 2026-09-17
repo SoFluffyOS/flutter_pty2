@@ -652,15 +652,16 @@ static int windows_create_process(const PtySpawnOptions *options,
         .X = (SHORT)options->size.columns,
         .Y = (SHORT)options->size.rows,
     };
-    if (FAILED(CreatePseudoConsole(size,
-                                   input_read,
-                                   output_write,
-                                   0,
-                                   pseudo_console))) {
+    const HRESULT create_console_result = CreatePseudoConsole(size,
+                                                              input_read,
+                                                              output_write,
+                                                              0,
+                                                              pseudo_console);
+    if (FAILED(create_console_result)) {
         pty_error_set(error,
-                      PTY_ERROR_DOMAIN_WIN32,
+                      PTY_ERROR_DOMAIN_HRESULT,
                       PTY_ERROR_SPAWN_FAILED,
-                      GetLastError(),
+                      create_console_result,
                       "creating ConPTY failed");
         goto failure;
     }
@@ -694,12 +695,26 @@ static int windows_create_process(const PtySpawnOptions *options,
 
     InitializeProcThreadAttributeList(NULL, 1, 0, &attribute_size);
     attributes = malloc(attribute_size);
-    if (attributes == NULL ||
-        !InitializeProcThreadAttributeList(attributes,
+    if (attributes == NULL) {
+        pty_error_set(error,
+                      PTY_ERROR_DOMAIN_INTERNAL,
+                      PTY_ERROR_OUT_OF_MEMORY,
+                      ERROR_NOT_ENOUGH_MEMORY,
+                      "allocating ConPTY process attributes failed");
+        goto failure;
+    }
+    if (!InitializeProcThreadAttributeList(attributes,
                                            1,
                                            0,
-                                           &attribute_size) ||
-        !UpdateProcThreadAttribute(attributes,
+                                           &attribute_size)) {
+        pty_error_set(error,
+                      PTY_ERROR_DOMAIN_WIN32,
+                      PTY_ERROR_SPAWN_FAILED,
+                      GetLastError(),
+                      "initializing ConPTY process attributes failed");
+        goto failure;
+    }
+    if (!UpdateProcThreadAttribute(attributes,
                                    0,
                                    PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
                                    *pseudo_console,
@@ -708,7 +723,7 @@ static int windows_create_process(const PtySpawnOptions *options,
                                    NULL)) {
         pty_error_set(error,
                       PTY_ERROR_DOMAIN_WIN32,
-                      PTY_ERROR_OUT_OF_MEMORY,
+                      PTY_ERROR_SPAWN_FAILED,
                       GetLastError(),
                       "configuring ConPTY process attributes failed");
         goto failure;
@@ -1157,11 +1172,13 @@ FFI_PLUGIN_EXPORT int32_t pty_session_resize(PtySession *session,
         .X = (SHORT)size.columns,
         .Y = (SHORT)size.rows,
     };
-    if (FAILED(ResizePseudoConsole(platform->pseudo_console, console_size))) {
+    const HRESULT resize_result =
+        ResizePseudoConsole(platform->pseudo_console, console_size);
+    if (FAILED(resize_result)) {
         pty_error_set(out_error,
                       PTY_ERROR_DOMAIN_HRESULT,
                       PTY_ERROR_IO,
-                      GetLastError(),
+                      resize_result,
                       "resizing ConPTY failed");
         return 0;
     }
