@@ -11,7 +11,7 @@ under a new pub package name.
 This package provides a Flutter FFI pseudo-terminal implementation for spawning
 and controlling terminal processes. The clean-slate 2.0 API is available
 alongside the existing compatibility API; platform verification is tracked
-separately for Windows and Android.
+separately for Windows, Android, and iOS.
 
 The package requires Dart 3 and Flutter 3.10 or newer.
 
