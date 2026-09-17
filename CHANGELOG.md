@@ -18,6 +18,7 @@
 * Complete deterministic close when a malformed terminal event is received.
 * Preserve protocol failures when buffered output is still awaiting drain.
 * Exercise Unix PTY spawning while allocator-heavy Dart isolates are active.
+* Keep native test assertions enabled in release CTest builds.
 * Complete inflight input futures when a later native write observes closure.
 * Preserve Unix native setup error codes when session initialization fails.
 * Treat failed native event delivery as Dart endpoint abandonment and release

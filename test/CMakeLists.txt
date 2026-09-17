@@ -9,6 +9,11 @@ function(add_pty_native_test test_name source_file)
     "${CMAKE_CURRENT_SOURCE_DIR}/../src"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/include"
   )
+  if (MSVC)
+    target_compile_options(${test_name} PRIVATE /UNDEBUG)
+  else()
+    target_compile_options(${test_name} PRIVATE -UNDEBUG)
+  endif()
   target_link_libraries(${test_name} PRIVATE Threads::Threads)
   if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(${test_name} PRIVATE util)
