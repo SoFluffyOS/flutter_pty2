@@ -122,14 +122,20 @@ jobs:
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/libflutter_pty2.dylib
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
-        run: flutter test test/clean_slate_integration_test.dart
+        run: >-
+          flutter test
+          test/clean_slate_integration_test.dart
+          test/clean_slate_spawn_failure_stress_test.dart
 
       - name: Run configured native integration tests on Linux
         if: runner.os == 'Linux'
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/libflutter_pty2.so
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
-        run: flutter test test/clean_slate_integration_test.dart
+        run: >-
+          flutter test
+          test/clean_slate_integration_test.dart
+          test/clean_slate_spawn_failure_stress_test.dart
 
       - name: Install example dependencies for iOS
         if: runner.os == 'macOS'
@@ -161,7 +167,9 @@ jobs:
           $env:FLUTTER_PTY2_LIBRARY = $library.FullName
           $env:PTY_TEST_CHILD = $fixture.FullName
           $env:PATH = "$($library.DirectoryName);$env:PATH"
-          flutter test test/clean_slate_windows_integration_test.dart
+          flutter test
+          test/clean_slate_windows_integration_test.dart
+          test/clean_slate_spawn_failure_stress_test.dart
 
       - name: Run configured clean-slate Windows large-transfer tests
         if: runner.os == 'Windows'

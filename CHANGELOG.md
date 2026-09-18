@@ -17,6 +17,7 @@
 * Keep repeated native spawn failures from requesting shutdown more than once.
 * Await native cleanup before reporting asynchronous spawn failures.
 * Stress repeated asynchronous spawn failures for native resource leaks.
+* Run spawn-failure resource checks in configured desktop CI integration jobs.
 * Fail closed and request native shutdown when the clean-slate event protocol is
   malformed.
 * Complete deterministic close when a malformed terminal event is received.
