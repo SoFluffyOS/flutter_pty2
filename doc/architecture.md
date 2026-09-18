@@ -120,6 +120,12 @@ retries `EINTR`, and treats `EAGAIN` as backpressure. A separate waiter owns
 `waitpid`; process exit wakes the reactor so it can preserve trailing output
 before closing the PTY stream.
 
+The slave PTY is not forced into raw mode during spawn. It retains standard
+terminal line discipline, including canonical input and `ISIG`, so a master
+write of the configured `VINTR` byte reaches the foreground process group as
+`SIGINT`. Applications that need binary terminal input can configure the
+slave-side terminal mode themselves.
+
 Spawn preparation resolves `PATH` before `fork()`, deep-copies all options,
 and uses `execve()` with an explicit environment. A close-on-exec status pipe
 communicates `setsid`, controlling-terminal, `dup2`, `chdir`, and `execve`

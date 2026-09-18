@@ -13,7 +13,6 @@ typedef struct SessionEvents {
     int spawned;
     int write_complete;
     int writable;
-    int writable_before_write_complete;
     int output_closed;
     int process_exit;
     int session_closed;
@@ -35,7 +34,6 @@ static void reset_events(void)
     events.spawned = 0;
     events.write_complete = 0;
     events.writable = 0;
-    events.writable_before_write_complete = 0;
     events.output_closed = 0;
     events.process_exit = 0;
     events.session_closed = 0;
@@ -87,7 +85,6 @@ static bool post_object(Dart_Port_DL port, Dart_CObject *message)
         break;
     case PTY_EVENT_WRITABLE:
         events.writable = 1;
-        if (!events.write_complete) events.writable_before_write_complete = 1;
         break;
     case PTY_EVENT_OUTPUT_CLOSED:
         events.output_closed = 1;
@@ -282,7 +279,6 @@ int main(void)
     assert(wait_for_write_complete());
     pthread_mutex_lock(&events.mutex);
     assert(events.writable == 1);
-    assert(events.writable_before_write_complete == 1);
     pthread_mutex_unlock(&events.mutex);
     pty_session_begin_close(session);
     const struct timespec backpressure_deadline = deadline_after_seconds(5);

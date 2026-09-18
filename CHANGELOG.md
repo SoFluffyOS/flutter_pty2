@@ -1,5 +1,7 @@
 ## (Unreleased)
 
+* Preserve standard Unix PTY line discipline instead of forcing raw mode, with
+  integration coverage for Ctrl-C through `VINTR`.
 * Export the Dart dynamic-link API symbols from Apple CocoaPods builds.
 * Export clean-slate and compatibility FFI entry points from hidden-visibility
   Apple builds.

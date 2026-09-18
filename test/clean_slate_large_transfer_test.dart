@@ -7,6 +7,41 @@ import 'package:flutter_pty2/flutter_pty2.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _defaultTransferSize = 100 * 1024 * 1024;
+const _binaryReadyMarker = 'BINARY_READY';
+
+final class _BinaryOutput {
+  _BinaryOutput(this.bytes, this.subscription);
+
+  final List<int> bytes;
+  final StreamSubscription<Uint8List> subscription;
+}
+
+Future<_BinaryOutput> _listenForBinaryOutput(PtySession session) async {
+  final marker = _binaryReadyMarker.codeUnits;
+  final bytes = <int>[];
+  final ready = Completer<void>();
+  late final StreamSubscription<Uint8List> subscription;
+  subscription = session.output.listen((chunk) {
+    bytes.addAll(chunk);
+    if (ready.isCompleted || bytes.length < marker.length) return;
+    for (var index = 0; index < marker.length; index++) {
+      if (bytes[index] == marker[index]) continue;
+      ready.completeError(
+        StateError('binary fixture readiness marker was corrupted'),
+      );
+      return;
+    }
+    bytes.removeRange(0, marker.length);
+    ready.complete();
+  });
+  try {
+    await ready.future.timeout(const Duration(seconds: 5));
+  } catch (_) {
+    await subscription.cancel();
+    rethrow;
+  }
+  return _BinaryOutput(bytes, subscription);
+}
 
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
@@ -81,21 +116,7 @@ void main() {
           arguments: ['copy-input', '$transferSize'],
         ),
       );
-      final outputDone = Completer<void>();
-      var received = 0;
-      var mismatched = false;
-      final subscription = session.output.listen(
-        (chunk) {
-          for (var index = 0; index < chunk.length; index++) {
-            if (chunk[index] != (received + index) % 251) {
-              mismatched = true;
-              break;
-            }
-          }
-          received += chunk.length;
-        },
-        onDone: outputDone.complete,
-      );
+      final binaryOutput = await _listenForBinaryOutput(session);
       try {
         for (var offset = 0; offset < transferSize;) {
           final length = math.min(chunkSize, transferSize - offset);
@@ -108,14 +129,16 @@ void main() {
         }
 
         final exit = await session.done.timeout(const Duration(minutes: 5));
-        await outputDone.future.timeout(const Duration(minutes: 5));
 
         expect(exit, isA<PtyExitCode>());
         if (exit case PtyExitCode(:final code)) expect(code, 0);
-        expect(mismatched, isFalse);
-        expect(received, transferSize);
+        expect(binaryOutput.bytes.length, transferSize);
+        expect(
+          binaryOutput.bytes,
+          List<int>.generate(transferSize, (index) => index % 251),
+        );
       } finally {
-        await subscription.cancel();
+        await binaryOutput.subscription.cancel();
         await session.close();
       }
     },

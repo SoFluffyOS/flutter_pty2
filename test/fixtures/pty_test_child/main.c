@@ -50,8 +50,11 @@ static unsigned int parse_delay(const char *value)
     return (unsigned int)delay;
 }
 
+static int prepare_binary_output(void);
+
 static void write_pattern(unsigned long long count, unsigned int delay)
 {
+    if (prepare_binary_output() != 0) exit(3);
     unsigned char buffer[4096];
     unsigned long long offset = 0;
 
@@ -84,8 +87,45 @@ static void print_environment(char **environment)
     }
 }
 
+static int prepare_binary_input(void)
+{
+#if defined(_WIN32)
+    fputs("BINARY_READY", stdout);
+    return fflush(stdout) == 0 ? 0 : 3;
+#else
+    struct termios attributes;
+    if (tcgetattr(STDIN_FILENO, &attributes) != 0) return 3;
+    attributes.c_iflag &=
+        ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+    attributes.c_oflag &= ~OPOST;
+    attributes.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+    attributes.c_cflag &= ~(CSIZE | PARENB);
+    attributes.c_cflag |= CS8;
+    attributes.c_cc[VMIN] = 1;
+    attributes.c_cc[VTIME] = 0;
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &attributes) != 0) return 3;
+    if (prepare_binary_output() != 0) return 3;
+    fputs("BINARY_READY", stdout);
+    return fflush(stdout) == 0 ? 0 : 3;
+#endif
+}
+
+static int prepare_binary_output(void)
+{
+#if defined(_WIN32)
+    return 0;
+#else
+    struct termios attributes;
+    if (tcgetattr(STDOUT_FILENO, &attributes) != 0) return 3;
+    attributes.c_oflag &= ~OPOST;
+    return tcsetattr(STDOUT_FILENO, TCSANOW, &attributes) == 0 ? 0 : 3;
+#endif
+}
+
 static int run_slow_input(unsigned int delay)
 {
+    if (prepare_binary_input() != 0) return 3;
+    if (prepare_binary_output() != 0) return 3;
     unsigned char buffer[1024];
     size_t length;
     while ((length = fread(buffer, 1, sizeof(buffer), stdin)) != 0) {
@@ -98,6 +138,8 @@ static int run_slow_input(unsigned int delay)
 
 static int run_copy_input(unsigned long long count, unsigned int delay)
 {
+    if (prepare_binary_input() != 0) return 3;
+    if (prepare_binary_output() != 0) return 3;
     unsigned char buffer[4096];
     unsigned long long remaining = count;
     while (remaining != 0) {
@@ -144,6 +186,30 @@ static int run_hold(void)
 {
     while (1) sleep_milliseconds(1000);
     return 0;
+}
+
+#if !defined(_WIN32)
+static volatile sig_atomic_t sigint_received = 0;
+
+static void handle_sigint(int signal_number)
+{
+    (void)signal_number;
+    sigint_received = 1;
+}
+#endif
+
+static int run_wait_for_sigint(void)
+{
+#if defined(_WIN32)
+    return 3;
+#else
+    if (signal(SIGINT, handle_sigint) == SIG_ERR) return 3;
+    puts("READY");
+    if (fflush(stdout) != 0) return 3;
+    while (!sigint_received) sleep_milliseconds(10);
+    puts("SIGINT");
+    return fflush(stdout) == 0 ? 0 : 3;
+#endif
 }
 
 #if defined(_WIN32)
@@ -233,6 +299,9 @@ int main(int argc, char **argv)
     }
     if (strcmp(argv[1], "hold") == 0 && argc == 2) {
         return run_hold();
+    }
+    if (strcmp(argv[1], "wait-for-sigint") == 0 && argc == 2) {
+        return run_wait_for_sigint();
     }
     if (strcmp(argv[1], "spawn-child") == 0 && argc == 2) {
         return run_spawn_child(argv[0]);

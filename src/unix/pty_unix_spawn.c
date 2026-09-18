@@ -34,18 +34,6 @@
 #define PTY_CHILD_STATUS_FD 3
 #define PTY_DEFAULT_PATH "/usr/local/bin:/usr/bin:/bin"
 
-static void pty_make_raw(struct termios *attributes)
-{
-    attributes->c_iflag &=
-        ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
-    attributes->c_oflag &= ~OPOST;
-    attributes->c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-    attributes->c_cflag &= ~(CSIZE | PARENB);
-    attributes->c_cflag |= CS8;
-    attributes->c_cc[VMIN] = 1;
-    attributes->c_cc[VTIME] = 0;
-}
-
 #if defined(__ANDROID__)
 static int pty_open(int *master_fd,
                     int *slave_fd,
@@ -623,6 +611,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
         free(resolved_executable);
         return 0;
     }
+#ifdef IUTF8
     struct termios attributes;
     if (tcgetattr(slave, &attributes) != 0) {
         const int error_number = errno;
@@ -637,13 +626,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
                             "reading PTY terminal attributes failed");
         return 0;
     }
-    // The clean-slate API transports terminal output as bytes.  Leave the
-    // PTY in raw mode so the kernel does not rewrite output (for example,
-    // turning each LF into CRLF through OPOST/ONLCR).
-    pty_make_raw(&attributes);
-#ifdef IUTF8
     attributes.c_iflag |= IUTF8;
-#endif
     if (tcsetattr(slave, TCSANOW, &attributes) != 0) {
         const int error_number = errno;
         close(master);
@@ -654,9 +637,10 @@ int pty_unix_spawn(const PtySpawnOptions *options,
         pty_error_set_errno(error,
                             PTY_ERROR_SPAWN_FAILED,
                             error_number,
-                            "setting PTY raw terminal mode failed");
+                            "setting PTY terminal attributes failed");
         return 0;
     }
+#endif
 
     int descriptor_error = 0;
     master = move_fd_above(master, PTY_CHILD_STATUS_FD + 1, &descriptor_error);

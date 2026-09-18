@@ -81,6 +81,8 @@ switch (session.input.tryWrite(bytes)) {
 `close()` is idempotent and performs asynchronous native shutdown. It may
 discard output that has not already been delivered to the output listener.
 Use `done` when all output must be drained before cleanup. On Unix,
+the slave PTY starts with standard terminal line discipline, so input byte
+`0x03` invokes the configured `VINTR` action for the foreground process group.
 `sendSignal` targets the configured POSIX process or process group; signal
 operations are unsupported on Windows. Windows uses ConPTY and Job Object
 containment, while Unix process-tree termination is best effort and does not

@@ -8,6 +8,46 @@ import 'package:flutter_pty2/flutter_pty.dart' as legacy;
 import 'package:flutter_pty2/flutter_pty2.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+String decodeTerminalText(Iterable<int> bytes) {
+  return utf8.decode(bytes.toList()).replaceAll('\r\n', '\n');
+}
+
+const _binaryReadyMarker = 'BINARY_READY';
+
+final class _BinaryOutput {
+  _BinaryOutput(this.bytes, this.subscription);
+
+  final List<int> bytes;
+  final StreamSubscription<Uint8List> subscription;
+}
+
+Future<_BinaryOutput> _listenForBinaryOutput(PtySession session) async {
+  final marker = _binaryReadyMarker.codeUnits;
+  final bytes = <int>[];
+  final ready = Completer<void>();
+  late final StreamSubscription<Uint8List> subscription;
+  subscription = session.output.listen((chunk) {
+    bytes.addAll(chunk);
+    if (ready.isCompleted || bytes.length < marker.length) return;
+    for (var index = 0; index < marker.length; index++) {
+      if (bytes[index] == marker[index]) continue;
+      ready.completeError(
+        StateError('binary fixture readiness marker was corrupted'),
+      );
+      return;
+    }
+    bytes.removeRange(0, marker.length);
+    ready.complete();
+  });
+  try {
+    await ready.future.timeout(const Duration(seconds: 5));
+  } catch (_) {
+    await subscription.cancel();
+    rethrow;
+  }
+  return _BinaryOutput(bytes, subscription);
+}
+
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
   final fixture = Platform.environment['PTY_TEST_CHILD'];
@@ -237,11 +277,11 @@ void main() {
       expect(exit, isA<PtyExitCode>());
       if (exit case PtyExitCode(:final code)) expect(code, 0);
       expect(
-        output.expand((chunk) => chunk).toList(),
-        utf8.encode([
+        decodeTerminalText(output.expand((chunk) => chunk)),
+        [
           for (var index = 0; index < arguments.length; index++)
             '$index:${arguments[index]}\n',
-        ].join()),
+        ].join(),
       );
     },
     skip: skipReason,
@@ -265,7 +305,7 @@ void main() {
       final output = await session.output.toList();
       final exit = await session.done;
       await session.close();
-      final text = utf8.decode(output.expand((chunk) => chunk).toList());
+      final text = decodeTerminalText(output.expand((chunk) => chunk));
 
       expect(exit, isA<PtyExitCode>());
       if (exit case PtyExitCode(:final code)) expect(code, 0);
@@ -293,9 +333,9 @@ void main() {
       final output = await session.output.toList();
       final exit = await session.done;
       await session.close();
-      final lines = utf8.decode(output.expand((chunk) => chunk).toList()).split(
-            '\n',
-          );
+      final lines = decodeTerminalText(output.expand((chunk) => chunk)).split(
+        '\n',
+      );
 
       expect(exit, isA<PtyExitCode>());
       if (exit case PtyExitCode(:final code)) expect(code, 0);
@@ -329,7 +369,7 @@ void main() {
       expect(exit, isA<PtyExitCode>());
       if (exit case PtyExitCode(:final code)) expect(code, 0);
       expect(
-        utf8.decode(output.expand((chunk) => chunk).toList()),
+        decodeTerminalText(output.expand((chunk) => chunk)),
         '$expectedWorkingDirectory\n',
       );
     },
@@ -358,7 +398,7 @@ void main() {
         expect(exit, isA<PtyExitCode>());
         if (exit case PtyExitCode(:final code)) expect(code, 0);
         expect(
-          utf8.decode(output.expand((chunk) => chunk).toList()),
+          decodeTerminalText(output.expand((chunk) => chunk)),
           '$expectedWorkingDirectory\n',
         );
       } finally {
@@ -394,6 +434,46 @@ void main() {
   );
 
   test(
+    'delivers Ctrl-C through Unix PTY line discipline',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['wait-for-sigint'],
+        ),
+      );
+      final ready = Completer<void>();
+      final outputDone = Completer<void>();
+      var output = '';
+      final subscription = session.output.listen(
+        (chunk) {
+          output += utf8.decode(chunk, allowMalformed: true);
+          if (output.contains('READY') && !ready.isCompleted) {
+            ready.complete();
+          }
+        },
+        onDone: outputDone.complete,
+      );
+      try {
+        await ready.future.timeout(const Duration(seconds: 5));
+        await session.input.write(Uint8List.fromList(const [0x03]));
+        final exit = await session.done.timeout(const Duration(seconds: 5));
+        await outputDone.future.timeout(const Duration(seconds: 5));
+
+        expect(exit, isA<PtyExitCode>());
+        if (exit case PtyExitCode(:final code)) expect(code, 0);
+        expect(output, contains('SIGINT'));
+      } finally {
+        await subscription.cancel();
+        await session.close();
+      }
+    },
+    skip: skipReason,
+  );
+
+  test(
     'preserves invalid UTF-8 and embedded NUL bytes in tiny writes',
     () async {
       final child = fixture;
@@ -405,17 +485,20 @@ void main() {
           arguments: ['copy-input', '${expected.length}'],
         ),
       );
-      final outputFuture = session.output.toList();
-      for (final byte in expected) {
-        await session.input.write(Uint8List.fromList([byte]));
-      }
-      final exit = await session.done;
-      final output = await outputFuture;
-      await session.close();
+      final binaryOutput = await _listenForBinaryOutput(session);
+      try {
+        for (final byte in expected) {
+          await session.input.write(Uint8List.fromList([byte]));
+        }
+        final exit = await session.done;
 
-      expect(exit, isA<PtyExitCode>());
-      if (exit case PtyExitCode(:final code)) expect(code, 0);
-      expect(output.expand((chunk) => chunk).toList(), expected);
+        expect(exit, isA<PtyExitCode>());
+        if (exit case PtyExitCode(:final code)) expect(code, 0);
+        expect(binaryOutput.bytes, expected);
+      } finally {
+        await binaryOutput.subscription.cancel();
+        await session.close();
+      }
     },
     skip: skipReason,
   );
@@ -445,7 +528,7 @@ void main() {
           ),
         );
         try {
-          final outputFuture = session.output.toList();
+          final binaryOutput = await _listenForBinaryOutput(session);
           for (var offset = 0; offset < expected.length;) {
             final end = math.min(offset + 64 * 1024, expected.length);
             await session.input.write(expected.sublist(offset, end));
@@ -454,11 +537,11 @@ void main() {
           final exit = await session.processExit.timeout(
             const Duration(seconds: 30),
           );
-          final output = await outputFuture;
 
           expect(exit, isA<PtyExitCode>());
           if (exit case PtyExitCode(:final code)) expect(code, 0);
-          expect(output.expand((chunk) => chunk).toList(), expected);
+          expect(binaryOutput.bytes, expected);
+          await binaryOutput.subscription.cancel();
         } finally {
           await session.close();
         }
@@ -481,24 +564,23 @@ void main() {
           inputBufferBytes: 64 * 1024,
         ),
       );
-      var received = 0;
-      var mismatched = false;
-      final outputSubscription = session.output.listen((chunk) {
-        received += chunk.length;
-        if (chunk.any((byte) => byte != 0)) mismatched = true;
-      });
-      expect(
-        session.input.tryWrite(Uint8List(transferSize)),
-        PtyWriteResult.accepted,
-      );
-      await session.input.flush();
-      final exit = await session.done;
-      await outputSubscription.cancel();
+      final binaryOutput = await _listenForBinaryOutput(session);
+      try {
+        expect(
+          session.input.tryWrite(Uint8List(transferSize)),
+          PtyWriteResult.accepted,
+        );
+        await session.input.flush();
+        final exit = await session.done;
 
-      expect(received, transferSize);
-      expect(mismatched, isFalse);
-      expect(exit, isA<PtyExitCode>());
-      if (exit case PtyExitCode(:final code)) expect(code, 0);
+        expect(binaryOutput.bytes.length, transferSize);
+        expect(binaryOutput.bytes.every((byte) => byte == 0), isTrue);
+        expect(exit, isA<PtyExitCode>());
+        if (exit case PtyExitCode(:final code)) expect(code, 0);
+      } finally {
+        await binaryOutput.subscription.cancel();
+        await session.close();
+      }
     },
     skip: skipReason,
   );
@@ -736,40 +818,30 @@ void main() {
           arguments: const ['copy-input', '$transferSize'],
         ),
       );
-      final outputDone = Completer<void>();
-      var received = 0;
-      var mismatched = false;
-      session.output.listen(
-        (chunk) {
-          for (var index = 0; index < chunk.length; index++) {
-            if (chunk[index] != (received + index) % 251) {
-              mismatched = true;
-              break;
-            }
+      final binaryOutput = await _listenForBinaryOutput(session);
+      try {
+        for (var offset = 0; offset < transferSize;) {
+          final length = math.min(chunkSize, transferSize - offset);
+          final chunk = Uint8List(length);
+          for (var index = 0; index < length; index++) {
+            chunk[index] = (offset + index) % 251;
           }
-          received += chunk.length;
-        },
-        onDone: outputDone.complete,
-      );
-
-      for (var offset = 0; offset < transferSize;) {
-        final length = math.min(chunkSize, transferSize - offset);
-        final chunk = Uint8List(length);
-        for (var index = 0; index < length; index++) {
-          chunk[index] = (offset + index) % 251;
+          await session.input.write(chunk);
+          offset += length;
         }
-        await session.input.write(chunk);
-        offset += length;
+        final exit = await session.done;
+
+        expect(exit, isA<PtyExitCode>());
+        if (exit case PtyExitCode(:final code)) expect(code, 0);
+        expect(binaryOutput.bytes.length, transferSize);
+        expect(
+          binaryOutput.bytes,
+          List<int>.generate(transferSize, (index) => index % 251),
+        );
+      } finally {
+        await binaryOutput.subscription.cancel();
+        await session.close();
       }
-
-      final exit = await session.done;
-      await outputDone.future;
-      await session.close();
-
-      expect(exit, isA<PtyExitCode>());
-      if (exit case PtyExitCode(:final code)) expect(code, 0);
-      expect(mismatched, isFalse);
-      expect(received, transferSize);
     },
     skip: skipReason,
     timeout: const Timeout(Duration(minutes: 2)),
@@ -789,40 +861,30 @@ void main() {
           inputBufferBytes: 64 * 1024,
         ),
       );
-      final outputDone = Completer<void>();
-      var received = 0;
-      var mismatched = false;
-      session.output.listen(
-        (chunk) {
-          for (var index = 0; index < chunk.length; index++) {
-            if (chunk[index] != (received + index) % 251) {
-              mismatched = true;
-              break;
-            }
+      final binaryOutput = await _listenForBinaryOutput(session);
+      try {
+        for (var offset = 0; offset < transferSize;) {
+          final length = math.min(chunkSize, transferSize - offset);
+          final chunk = Uint8List(length);
+          for (var index = 0; index < length; index++) {
+            chunk[index] = (offset + index) % 251;
           }
-          received += chunk.length;
-        },
-        onDone: outputDone.complete,
-      );
-
-      for (var offset = 0; offset < transferSize;) {
-        final length = math.min(chunkSize, transferSize - offset);
-        final chunk = Uint8List(length);
-        for (var index = 0; index < length; index++) {
-          chunk[index] = (offset + index) % 251;
+          await session.input.write(chunk);
+          offset += length;
         }
-        await session.input.write(chunk);
-        offset += length;
+        final exit = await session.done.timeout(const Duration(seconds: 30));
+
+        expect(exit, isA<PtyExitCode>());
+        if (exit case PtyExitCode(:final code)) expect(code, 0);
+        expect(binaryOutput.bytes.length, transferSize);
+        expect(
+          binaryOutput.bytes,
+          List<int>.generate(transferSize, (index) => index % 251),
+        );
+      } finally {
+        await binaryOutput.subscription.cancel();
+        await session.close();
       }
-
-      final exit = await session.done.timeout(const Duration(seconds: 30));
-      await outputDone.future;
-      await session.close();
-
-      expect(exit, isA<PtyExitCode>());
-      if (exit case PtyExitCode(:final code)) expect(code, 0);
-      expect(mismatched, isFalse);
-      expect(received, transferSize);
     },
     skip: skipReason,
   );
@@ -982,8 +1044,8 @@ void main() {
       expect(exit, isA<PtyExitCode>());
       if (exit case PtyExitCode(:final code)) expect(code, 0);
       expect(
-        output.expand((chunk) => chunk).toList(),
-        '40 120 1920 1080\n'.codeUnits,
+        decodeTerminalText(output.expand((chunk) => chunk)),
+        '40 120 1920 1080\n',
       );
     },
     skip: skipReason,
@@ -1001,17 +1063,20 @@ void main() {
           inputBufferBytes: 64 * 1024,
         ),
       );
-      final outputSubscription = session.output.listen((_) {});
-      final writeFuture = session.input.write(Uint8List(4 * 1024 * 1024));
-      final writeExpectation = expectLater(
-        writeFuture,
-        throwsA(isA<PtyException>()),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-      await session.close();
-      await outputSubscription.cancel();
+      final binaryOutput = await _listenForBinaryOutput(session);
+      try {
+        final writeFuture = session.input.write(Uint8List(4 * 1024 * 1024));
+        final writeExpectation = expectLater(
+          writeFuture,
+          throwsA(isA<PtyException>()),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await session.close();
 
-      await writeExpectation;
+        await writeExpectation;
+      } finally {
+        await binaryOutput.subscription.cancel();
+      }
     },
     skip: skipReason,
   );
