@@ -236,6 +236,19 @@ void main() {
     );
   });
 
+  test('propagates synchronous native tryWrite errors', () {
+    const error = PtyIoException('native write failed');
+    final input = InputFlowController(
+      nativeTryWrite: (_, __) => throw error,
+    );
+
+    expect(
+      () => input.tryWrite(Uint8List.fromList([1])),
+      throwsA(same(error)),
+    );
+    expect(input.tryWrite(Uint8List.fromList([2])), PtyWriteResult.closed);
+  });
+
   test('fails inflight tryWrite requests when a later request is closed',
       () async {
     var nativeCalls = 0;

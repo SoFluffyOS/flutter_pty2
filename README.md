@@ -63,8 +63,9 @@ admission before completing when the native backend has written those bytes.
 Do not mutate the supplied buffer until its future completes. Use
 `tryWrite(bytes)` for a non-blocking operation: it returns `accepted` when the
 request was queued, `backpressured` when the bounded input queue is full, or
-`closed` after the session has stopped accepting input. Accepted `tryWrite`
-requests can be awaited together with `input.flush()`.
+`closed` after the session has stopped accepting input. A native I/O failure
+throws its typed `PtyException` and shuts down the session. Accepted
+`tryWrite` requests can be awaited together with `input.flush()`.
 
 ```dart
 switch (session.input.tryWrite(bytes)) {

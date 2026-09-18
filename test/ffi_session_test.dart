@@ -122,7 +122,7 @@ void main() {
     await Future<void>.delayed(Duration.zero);
   });
 
-  test('requests native shutdown when a native write fails', () {
+  test('propagates typed errors when a native write fails', () {
     _writeErrorCloseCalls = 0;
     final state = FfiPtySessionState(
       handle: Pointer<native.PtySession>.fromAddress(1),
@@ -130,8 +130,14 @@ void main() {
     );
 
     expect(
-      state.input.tryWrite(Uint8List.fromList([1])),
-      PtyWriteResult.closed,
+      () => state.input.tryWrite(Uint8List.fromList([1])),
+      throwsA(
+        isA<PtyIoException>().having(
+          (error) => error.nativeError?.code,
+          'native error code',
+          5,
+        ),
+      ),
     );
     expect(_writeErrorCloseCalls, 1);
   });

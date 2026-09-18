@@ -97,7 +97,7 @@ final class InputFlowController implements PtyInput {
       }
     } catch (error, stackTrace) {
       closeWithError(error, stackTrace);
-      return PtyWriteResult.closed;
+      Error.throwWithStackTrace(error, stackTrace);
     }
     if (result == PtyWriteResult.closed) {
       closeWithError(const PtyClosedException());
