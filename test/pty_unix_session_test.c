@@ -267,6 +267,7 @@ int main(void)
     assert(session != NULL);
     active_session = session;
     assert(wait_for_spawn());
+    pty_session_discard_output(session);
     uint8_t large_input[64 * 1024] = {0};
     assert(pty_session_try_write(session,
                                  43,
