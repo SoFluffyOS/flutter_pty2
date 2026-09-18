@@ -22,7 +22,13 @@ function(add_pty_native_test test_name source_file)
     BUILD_RPATH "$<TARGET_FILE_DIR:flutter_pty2>"
   )
   add_test(NAME ${test_name} COMMAND ${test_name})
-  set_tests_properties(${test_name} PROPERTIES TIMEOUT 300)
+  set(test_timeout 300)
+  if (test_name MATCHES "session_stress_test$")
+    # The release gate runs 1,000 process lifecycles. Keep enough headroom for
+    # slower hosted runners and emulated Windows environments.
+    set(test_timeout 600)
+  endif()
+  set_tests_properties(${test_name} PROPERTIES TIMEOUT ${test_timeout})
   if (test_name STREQUAL "pty_unix_session_stress_test")
     set_tests_properties(${test_name} PROPERTIES
       ENVIRONMENT "PTY_NATIVE_STRESS_CYCLES=1000"
