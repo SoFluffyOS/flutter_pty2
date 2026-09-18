@@ -110,8 +110,7 @@ static void windows_close_pseudo_console_now(PtySession *session)
 
     HPCON pseudo_console = NULL;
     EnterCriticalSection(&platform->mutex);
-    if (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_RELEASED ||
-        platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSED) {
+    if (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSED) {
         LeaveCriticalSection(&platform->mutex);
         return;
     }
@@ -201,8 +200,7 @@ static void windows_start_pseudo_console_close_worker(PtySession *session)
     if (platform == NULL || platform->pseudo_console == NULL) return;
 
     EnterCriticalSection(&platform->mutex);
-    if (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_RELEASED ||
-        platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSED ||
+    if (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSED ||
         platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSING) {
         LeaveCriticalSection(&platform->mutex);
         return;
@@ -334,8 +332,7 @@ static void windows_maybe_post_closed(PtySession *session)
     EnterCriticalSection(&platform->mutex);
     if (platform->stopping && platform->reader_done && platform->writer_done &&
         platform->waiter_done && platform->close_done &&
-        (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_RELEASED ||
-         platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSED) &&
+        platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSED &&
         !platform->session_closed_posted) {
         platform->session_closed_posted = 1;
         should_post = 1;
