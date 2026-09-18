@@ -34,6 +34,10 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Verify package publish contents
+        if: matrix.os == 'ubuntu-latest' && matrix.sdk == 'stable'
+        run: dart pub publish --dry-run
+
       - name: Verify generated FFI bindings
         run: >-
           dart run ffigen --config ffigen_v2.yaml
