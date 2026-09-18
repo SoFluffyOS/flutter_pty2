@@ -104,6 +104,12 @@ static int force_pseudo_console_close_worker(void)
     return value != NULL && value[0] != '\0' && value[0] != '0';
 }
 
+static int force_close_worker_failure(void)
+{
+    const char *value = getenv("PTY_TEST_FORCE_CLOSE_THREAD_FAILURE");
+    return value != NULL && value[0] != '\0' && value[0] != '0';
+}
+
 static void windows_mark_pseudo_console_closed(PtyWindowsPlatform *platform)
 {
     EnterCriticalSection(&platform->mutex);
@@ -1213,7 +1219,8 @@ FFI_PLUGIN_EXPORT void pty_session_discard_output(PtySession *session)
     LeaveCriticalSection(&platform->mutex);
 }
 
-FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
+static void windows_begin_close(PtySession *session,
+                                int allow_blocking_fallback)
 {
     if (session == NULL) return;
     while (true) {
@@ -1256,12 +1263,14 @@ FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
     // post may release the Dart-owned reference before this function returns.
     pty_session_retain(session);
     pty_session_retain(session);
-    platform->close_thread = CreateThread(NULL,
-                                          0,
-                                          windows_close_worker,
-                                          session,
-                                          0,
-                                          NULL);
+    platform->close_thread = force_close_worker_failure()
+                                 ? NULL
+                                 : CreateThread(NULL,
+                                                0,
+                                                windows_close_worker,
+                                                session,
+                                                0,
+                                                NULL);
     if (platform->close_thread != NULL) {
         pty_session_release(session);
         return;
@@ -1275,15 +1284,27 @@ FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
     platform->close_done = 1;
     LeaveCriticalSection(&platform->mutex);
     windows_stop_process(platform);
+    if (!allow_blocking_fallback) {
+        // NativeFinalizer must return without waiting for a worker or the
+        // potentially blocking ConPTY close. Existing workers retain the
+        // session and will release ownership, or final refcount teardown will
+        // perform the final close on a native worker thread.
+        return;
+    }
     windows_start_pseudo_console_close_worker(session);
     windows_wait_for_pseudo_console_close(session);
     windows_maybe_post_closed(session);
+}
+
+FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
+{
+    windows_begin_close(session, 1);
 }
 
 FFI_PLUGIN_EXPORT void pty_session_abandon(void *opaque_session)
 {
     PtySession *session = opaque_session;
     if (session == NULL || !pty_session_mark_abandoned(session)) return;
-    pty_session_begin_close(session);
+    windows_begin_close(session, 0);
     pty_session_release(session);
 }

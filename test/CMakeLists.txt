@@ -87,6 +87,15 @@ if (WIN32)
     ${PTY_COMMON_SOURCES}
     ${PTY_PLATFORM_SOURCES}
   )
+  add_pty_native_test(
+    pty_windows_finalizer_test
+    pty_windows_finalizer_test.c
+    ${PTY_COMMON_SOURCES}
+    ${PTY_PLATFORM_SOURCES}
+  )
+  set_tests_properties(pty_windows_finalizer_test PROPERTIES
+    ENVIRONMENT "PTY_TEST_FORCE_CLOSE_THREAD_FAILURE=1"
+  )
 else()
   add_pty_native_test(
     pty_write_queue_test
