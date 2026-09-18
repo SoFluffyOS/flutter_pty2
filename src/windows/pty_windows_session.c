@@ -20,8 +20,9 @@ typedef HRESULT(WINAPI *PtyReleasePseudoConsoleFn)(HPCON pseudo_console);
 typedef enum PtyPseudoConsoleState {
     PTY_PSEUDO_CONSOLE_OWNED = 0,
     PTY_PSEUDO_CONSOLE_RELEASED = 1,
-    PTY_PSEUDO_CONSOLE_CLOSING = 2,
-    PTY_PSEUDO_CONSOLE_CLOSED = 3
+    PTY_PSEUDO_CONSOLE_RELEASING = 2,
+    PTY_PSEUDO_CONSOLE_CLOSING = 3,
+    PTY_PSEUDO_CONSOLE_CLOSED = 4
 } PtyPseudoConsoleState;
 
 /*
@@ -126,6 +127,11 @@ static void windows_close_pseudo_console_now(PtySession *session)
 
     HPCON pseudo_console = NULL;
     EnterCriticalSection(&platform->mutex);
+    while (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_RELEASING) {
+        SleepConditionVariableCS(&platform->condition,
+                                 &platform->mutex,
+                                 INFINITE);
+    }
     if (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSED) {
         LeaveCriticalSection(&platform->mutex);
         return;
@@ -150,15 +156,23 @@ static void windows_release_pseudo_console_ownership(PtySession *session)
     PtyWindowsPlatform *platform = windows_platform(session);
     if (platform == NULL || platform->pseudo_console == NULL) return;
 
+    PtyReleasePseudoConsoleFn release_pseudo_console = NULL;
+    HPCON pseudo_console = NULL;
     EnterCriticalSection(&platform->mutex);
     if (platform->pseudo_console_state != PTY_PSEUDO_CONSOLE_OWNED) {
         LeaveCriticalSection(&platform->mutex);
         return;
     }
-    const PtyReleasePseudoConsoleFn release_pseudo_console =
-        platform->release_pseudo_console;
+    release_pseudo_console = platform->release_pseudo_console;
+    pseudo_console = platform->pseudo_console;
     if (release_pseudo_console != NULL) {
-        const HRESULT result = release_pseudo_console(platform->pseudo_console);
+        platform->pseudo_console_state = PTY_PSEUDO_CONSOLE_RELEASING;
+    }
+    LeaveCriticalSection(&platform->mutex);
+
+    if (release_pseudo_console != NULL) {
+        const HRESULT result = release_pseudo_console(pseudo_console);
+        EnterCriticalSection(&platform->mutex);
         if (SUCCEEDED(result)) {
             pty_debug_pseudo_console_release();
             platform->pseudo_console_state = PTY_PSEUDO_CONSOLE_RELEASED;
@@ -166,8 +180,10 @@ static void windows_release_pseudo_console_ownership(PtySession *session)
             LeaveCriticalSection(&platform->mutex);
             return;
         }
+        platform->pseudo_console_state = PTY_PSEUDO_CONSOLE_OWNED;
+        WakeAllConditionVariable(&platform->condition);
+        LeaveCriticalSection(&platform->mutex);
     }
-    LeaveCriticalSection(&platform->mutex);
 
     // On older Windows, or when the dynamic release call fails, the blocking
     // ownership release must run away from the output reader.
@@ -220,6 +236,11 @@ static void windows_start_pseudo_console_close_worker(PtySession *session)
     if (platform == NULL || platform->pseudo_console == NULL) return;
 
     EnterCriticalSection(&platform->mutex);
+    while (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_RELEASING) {
+        SleepConditionVariableCS(&platform->condition,
+                                 &platform->mutex,
+                                 INFINITE);
+    }
     if (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSED ||
         platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSING) {
         LeaveCriticalSection(&platform->mutex);
