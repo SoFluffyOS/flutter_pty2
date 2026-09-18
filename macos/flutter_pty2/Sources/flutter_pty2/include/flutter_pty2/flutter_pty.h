@@ -55,6 +55,7 @@ typedef struct PtyDebugStats {
     uint64_t live_write_workers;
     uint64_t live_wait_workers;
     uint64_t live_close_workers;
+    uint64_t live_pseudo_console_workers;
     uint64_t pending_write_chunks;
     uint64_t pending_write_bytes;
 } PtyDebugStats;

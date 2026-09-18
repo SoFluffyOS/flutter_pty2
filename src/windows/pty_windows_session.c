@@ -13,6 +13,28 @@
 
 #define PTY_WINDOWS_IO_BUFFER_SIZE (64 * 1024)
 
+#ifndef PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE
+#define PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE \
+    ProcThreadAttributeValue(22, FALSE, TRUE, FALSE)
+typedef HANDLE HPCON;
+HRESULT WINAPI CreatePseudoConsole(COORD size,
+                                   HANDLE input,
+                                   HANDLE output,
+                                   DWORD flags,
+                                   HPCON *pseudo_console);
+HRESULT WINAPI ResizePseudoConsole(HPCON pseudo_console, COORD size);
+void WINAPI ClosePseudoConsole(HPCON pseudo_console);
+#endif
+
+typedef HRESULT(WINAPI *PtyReleasePseudoConsoleFn)(HPCON pseudo_console);
+
+typedef enum PtyPseudoConsoleState {
+    PTY_PSEUDO_CONSOLE_OWNED = 0,
+    PTY_PSEUDO_CONSOLE_RELEASED = 1,
+    PTY_PSEUDO_CONSOLE_CLOSING = 2,
+    PTY_PSEUDO_CONSOLE_CLOSED = 3
+} PtyPseudoConsoleState;
+
 /*
  * The platform mutex guards stop/termination state, worker completion flags,
  * backpressure flags, input/output closure flags, and the closed-event guard.
@@ -31,6 +53,8 @@ typedef struct PtyWindowsPlatform {
     HANDLE input_write;
     HANDLE output_read;
     HPCON pseudo_console;
+    PtyReleasePseudoConsoleFn release_pseudo_console;
+    PtyPseudoConsoleState pseudo_console_state;
     HANDLE process;
     HANDLE job;
     DWORD process_id;
@@ -38,6 +62,7 @@ typedef struct PtyWindowsPlatform {
     HANDLE writer_thread;
     HANDLE waiter_thread;
     HANDLE close_thread;
+    HANDLE pseudo_console_close_thread;
     int reader_started;
     int writer_started;
     int waiter_started;
@@ -46,6 +71,8 @@ typedef struct PtyWindowsPlatform {
     int waiter_done;
     int close_started;
     int close_done;
+    int pseudo_console_close_started;
+    int pseudo_console_close_done;
     int stopping;
     int termination_requested;
     int write_backpressured;
@@ -61,9 +88,84 @@ typedef struct PtyWindowsBootstrap {
     PtyWindowsOwnedOptions options;
 } PtyWindowsBootstrap;
 
+static DWORD WINAPI windows_pseudo_console_close_worker(void *argument);
+static void windows_start_pseudo_console_close_worker(PtySession *session);
+static void windows_wait_for_pseudo_console_close(PtySession *session);
+
 static PtyWindowsPlatform *windows_platform(PtySession *session)
 {
     return (PtyWindowsPlatform *)pty_session_platform_load(session);
+}
+
+static PtyReleasePseudoConsoleFn lookup_release_pseudo_console(void)
+{
+    const HMODULE module = GetModuleHandleW(L"kernel32.dll");
+    if (module == NULL) return NULL;
+    return (PtyReleasePseudoConsoleFn)GetProcAddress(
+        module,
+        "ReleasePseudoConsole");
+}
+
+static void windows_mark_pseudo_console_closed(PtyWindowsPlatform *platform)
+{
+    EnterCriticalSection(&platform->mutex);
+    platform->pseudo_console_state = PTY_PSEUDO_CONSOLE_CLOSED;
+    platform->pseudo_console_close_done = 1;
+    WakeAllConditionVariable(&platform->condition);
+    LeaveCriticalSection(&platform->mutex);
+}
+
+static void windows_close_pseudo_console_now(PtySession *session)
+{
+    PtyWindowsPlatform *platform = windows_platform(session);
+    if (platform == NULL || platform->pseudo_console == NULL) return;
+
+    HPCON pseudo_console = NULL;
+    EnterCriticalSection(&platform->mutex);
+    if (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSED) {
+        LeaveCriticalSection(&platform->mutex);
+        return;
+    }
+    if (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSING) {
+        LeaveCriticalSection(&platform->mutex);
+        windows_wait_for_pseudo_console_close(session);
+        return;
+    }
+    platform->pseudo_console_state = PTY_PSEUDO_CONSOLE_CLOSING;
+    platform->pseudo_console_close_started = 1;
+    pseudo_console = platform->pseudo_console;
+    LeaveCriticalSection(&platform->mutex);
+
+    ClosePseudoConsole(pseudo_console);
+    windows_mark_pseudo_console_closed(platform);
+}
+
+static void windows_release_pseudo_console_ownership(PtySession *session)
+{
+    PtyWindowsPlatform *platform = windows_platform(session);
+    if (platform == NULL || platform->pseudo_console == NULL) return;
+
+    EnterCriticalSection(&platform->mutex);
+    if (platform->pseudo_console_state != PTY_PSEUDO_CONSOLE_OWNED) {
+        LeaveCriticalSection(&platform->mutex);
+        return;
+    }
+    const PtyReleasePseudoConsoleFn release_pseudo_console =
+        platform->release_pseudo_console;
+    if (release_pseudo_console != NULL) {
+        const HRESULT result = release_pseudo_console(platform->pseudo_console);
+        if (SUCCEEDED(result)) {
+            platform->pseudo_console_state = PTY_PSEUDO_CONSOLE_RELEASED;
+            WakeAllConditionVariable(&platform->condition);
+            LeaveCriticalSection(&platform->mutex);
+            return;
+        }
+    }
+    LeaveCriticalSection(&platform->mutex);
+
+    // On older Windows, or when the dynamic release call fails, the blocking
+    // ownership release must run away from the output reader.
+    windows_start_pseudo_console_close_worker(session);
 }
 
 static int handle_posted_session_event(PtySession *session, int posted)
@@ -89,6 +191,72 @@ static void windows_post_error(PtySession *session,
                   error_code,
                   operation);
     post_session_event(session, pty_post_error(session->event_port, &error));
+}
+
+static DWORD WINAPI windows_pseudo_console_close_worker(void *argument)
+{
+    PtySession *session = argument;
+    PtyWindowsPlatform *platform = windows_platform(session);
+    if (platform != NULL && platform->pseudo_console != NULL) {
+        ClosePseudoConsole(platform->pseudo_console);
+        windows_mark_pseudo_console_closed(platform);
+    }
+    pty_debug_worker_finished(PTY_DEBUG_WORKER_PSEUDO_CONSOLE);
+    pty_session_release(session);
+    return 0;
+}
+
+static void windows_start_pseudo_console_close_worker(PtySession *session)
+{
+    PtyWindowsPlatform *platform = windows_platform(session);
+    if (platform == NULL || platform->pseudo_console == NULL) return;
+
+    EnterCriticalSection(&platform->mutex);
+    if (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSED ||
+        platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSING) {
+        LeaveCriticalSection(&platform->mutex);
+        return;
+    }
+    platform->pseudo_console_state = PTY_PSEUDO_CONSOLE_CLOSING;
+    platform->pseudo_console_close_started = 1;
+    LeaveCriticalSection(&platform->mutex);
+
+    pty_debug_worker_started(PTY_DEBUG_WORKER_PSEUDO_CONSOLE);
+    pty_session_retain(session);
+    HANDLE thread = CreateThread(NULL,
+                                 0,
+                                 windows_pseudo_console_close_worker,
+                                 session,
+                                 0,
+                                 NULL);
+    if (thread != NULL) {
+        EnterCriticalSection(&platform->mutex);
+        platform->pseudo_console_close_thread = thread;
+        LeaveCriticalSection(&platform->mutex);
+        return;
+    }
+
+    // A thread allocation failure must not leave the HPCON in CLOSING forever.
+    // This caller is never the output reader, so the blocking fallback is
+    // safe and preserves exactly-once close semantics.
+    pty_debug_worker_finished(PTY_DEBUG_WORKER_PSEUDO_CONSOLE);
+    pty_session_release(session);
+    ClosePseudoConsole(platform->pseudo_console);
+    windows_mark_pseudo_console_closed(platform);
+}
+
+static void windows_wait_for_pseudo_console_close(PtySession *session)
+{
+    PtyWindowsPlatform *platform = windows_platform(session);
+    if (platform == NULL) return;
+    EnterCriticalSection(&platform->mutex);
+    while (platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSING &&
+           !platform->pseudo_console_close_done) {
+        SleepConditionVariableCS(&platform->condition,
+                                 &platform->mutex,
+                                 INFINITE);
+    }
+    LeaveCriticalSection(&platform->mutex);
 }
 
 static void windows_mark_output_closed(PtySession *session)
@@ -176,6 +344,7 @@ static void windows_maybe_post_closed(PtySession *session)
     EnterCriticalSection(&platform->mutex);
     if (platform->stopping && platform->reader_done && platform->writer_done &&
         platform->waiter_done && platform->close_done &&
+        platform->pseudo_console_state == PTY_PSEUDO_CONSOLE_CLOSED &&
         !platform->session_closed_posted) {
         platform->session_closed_posted = 1;
         should_post = 1;
@@ -273,14 +442,20 @@ static DWORD WINAPI windows_writer(void *argument)
     while (true) {
         EnterCriticalSection(&platform->mutex);
         while (!platform->stopping &&
+               InterlockedCompareExchange(&session->process_exited, 0, 0) ==
+                   0 &&
                pty_write_queue_pending_bytes(&platform->write_queue) == 0) {
             SleepConditionVariableCS(&platform->condition,
                                      &platform->mutex,
                                      INFINITE);
         }
         const int stopping = platform->stopping;
+        const int process_exited =
+            InterlockedCompareExchange(&session->process_exited, 0, 0) != 0;
+        const int queue_empty =
+            pty_write_queue_pending_bytes(&platform->write_queue) == 0;
         LeaveCriticalSection(&platform->mutex);
-        if (stopping) break;
+        if (stopping || (process_exited && queue_empty)) break;
 
         PtyWriteChunk *chunk =
             pty_write_queue_dequeue(&platform->write_queue);
@@ -345,6 +520,10 @@ static DWORD WINAPI windows_waiter(void *argument)
     PtyWindowsPlatform *platform = windows_platform(session);
     const DWORD wait_result = WaitForSingleObject(platform->process, INFINITE);
     if (wait_result == WAIT_OBJECT_0) {
+        InterlockedExchange(&session->process_exited, 1);
+        EnterCriticalSection(&platform->mutex);
+        WakeAllConditionVariable(&platform->condition);
+        LeaveCriticalSection(&platform->mutex);
         DWORD exit_code = 1;
         if (GetExitCodeProcess(platform->process, &exit_code)) {
             post_session_event(
@@ -356,6 +535,7 @@ static DWORD WINAPI windows_waiter(void *argument)
                                GetLastError(),
                                "reading ConPTY process exit failed");
         }
+        windows_release_pseudo_console_ownership(session);
     } else if (wait_result == WAIT_FAILED) {
         windows_post_error(session,
                            PTY_ERROR_IO,
@@ -367,8 +547,11 @@ static DWORD WINAPI windows_waiter(void *argument)
                            ERROR_INVALID_DATA,
                            "waiting for ConPTY process returned an invalid status");
     }
-    InterlockedExchange(&session->process_exited, 1);
+    if (wait_result != WAIT_OBJECT_0) {
+        InterlockedExchange(&session->process_exited, 1);
+    }
     EnterCriticalSection(&platform->mutex);
+    WakeAllConditionVariable(&platform->condition);
     platform->waiter_done = 1;
     LeaveCriticalSection(&platform->mutex);
     pty_debug_worker_finished(PTY_DEBUG_WORKER_WAIT);
@@ -422,6 +605,8 @@ static void windows_finish_unstarted_close(PtySession *session,
     windows_stop_process(platform);
     WaitForSingleObject(platform->process, INFINITE);
     if (process_thread != NULL) CloseHandle(process_thread);
+    windows_start_pseudo_console_close_worker(session);
+    windows_wait_for_pseudo_console_close(session);
 
     EnterCriticalSection(&platform->mutex);
     platform->reader_done = 1;
@@ -471,6 +656,8 @@ static void windows_finish_worker_startup_failure(PtySession *session,
     if (platform->waiter_started) {
         WaitForSingleObject(platform->waiter_thread, INFINITE);
     }
+    windows_start_pseudo_console_close_worker(session);
+    windows_wait_for_pseudo_console_close(session);
     EnterCriticalSection(&platform->mutex);
     if (!platform->reader_started) platform->reader_done = 1;
     if (!platform->writer_started) platform->writer_done = 1;
@@ -491,6 +678,8 @@ static DWORD WINAPI windows_close_worker(void *argument)
     PtySession *session = argument;
     PtyWindowsPlatform *platform = windows_platform(session);
     windows_stop_process(platform);
+    windows_start_pseudo_console_close_worker(session);
+    windows_wait_for_pseudo_console_close(session);
     EnterCriticalSection(&platform->mutex);
     platform->close_done = 1;
     LeaveCriticalSection(&platform->mutex);
@@ -508,13 +697,14 @@ static void windows_free_session(PtySession *session)
         if (platform->writer_thread != NULL) CloseHandle(platform->writer_thread);
         if (platform->waiter_thread != NULL) CloseHandle(platform->waiter_thread);
         if (platform->close_thread != NULL) CloseHandle(platform->close_thread);
+        if (platform->pseudo_console_close_thread != NULL) {
+            CloseHandle(platform->pseudo_console_close_thread);
+        }
         if (platform->input_write != NULL) CloseHandle(platform->input_write);
         if (platform->output_read != NULL) CloseHandle(platform->output_read);
         if (platform->process != NULL) CloseHandle(platform->process);
         if (platform->job != NULL) CloseHandle(platform->job);
-        if (platform->pseudo_console != NULL) {
-            ClosePseudoConsole(platform->pseudo_console);
-        }
+        windows_close_pseudo_console_now(session);
         pty_write_queue_dispose(&platform->write_queue);
         DeleteCriticalSection(&platform->mutex);
         free(platform);
@@ -597,6 +787,8 @@ static DWORD WINAPI windows_bootstrap(void *argument)
     platform->input_write = input_write;
     platform->output_read = output_read;
     platform->pseudo_console = pseudo_console;
+    platform->release_pseudo_console = lookup_release_pseudo_console();
+    platform->pseudo_console_state = PTY_PSEUDO_CONSOLE_OWNED;
     platform->process = process;
     platform->job = job;
     platform->process_id = process_id;
@@ -702,6 +894,8 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         if (platform->reader_started) WaitForSingleObject(platform->reader_thread, INFINITE);
         if (platform->writer_started) WaitForSingleObject(platform->writer_thread, INFINITE);
         if (platform->waiter_started) WaitForSingleObject(platform->waiter_thread, INFINITE);
+        windows_start_pseudo_console_close_worker(session);
+        windows_wait_for_pseudo_console_close(session);
         if (synchronous_close) {
             EnterCriticalSection(&platform->mutex);
             platform->close_done = 1;
@@ -1075,6 +1269,8 @@ FFI_PLUGIN_EXPORT void pty_session_begin_close(PtySession *session)
     platform->close_done = 1;
     LeaveCriticalSection(&platform->mutex);
     windows_stop_process(platform);
+    windows_start_pseudo_console_close_worker(session);
+    windows_wait_for_pseudo_console_close(session);
     windows_maybe_post_closed(session);
 }
 

@@ -302,6 +302,45 @@ void main() {
   );
 
   test(
+    'drains megabytes of ConPTY output after process exit without early close',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      const transferSize = 3 * 1024 * 1024;
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['flood-output', '$transferSize'],
+          outputWindowBytes: 16 * 1024,
+        ),
+      );
+      final output = <int>[];
+      var doneCompleted = false;
+      var outputAfterDone = false;
+      final subscription = session.output.listen((chunk) {
+        output.addAll(chunk);
+        if (doneCompleted) outputAfterDone = true;
+      });
+      try {
+        final processExit = await session.processExit.timeout(
+          const Duration(seconds: 10),
+        );
+        final done = await session.done.timeout(const Duration(seconds: 10));
+        doneCompleted = true;
+
+        expect(done, processExit);
+        expect(
+            output, List<int>.generate(transferSize, (index) => index % 251));
+        expect(outputAfterDone, isFalse);
+      } finally {
+        await subscription.cancel();
+        await session.close();
+      }
+    },
+    skip: skipReason,
+  );
+
+  test(
     'closes cleanly while ConPTY input is queued',
     () async {
       final child = fixture;

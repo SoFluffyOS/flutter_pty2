@@ -8,6 +8,7 @@ static volatile LONG64 live_read_workers;
 static volatile LONG64 live_write_workers;
 static volatile LONG64 live_wait_workers;
 static volatile LONG64 live_close_workers;
+static volatile LONG64 live_pseudo_console_workers;
 static volatile LONG64 pending_write_chunks;
 static volatile LONG64 pending_write_bytes;
 
@@ -22,6 +23,8 @@ static volatile LONG64 *worker_counter(PtyDebugWorkerKind kind)
             return &live_wait_workers;
         case PTY_DEBUG_WORKER_CLOSE:
             return &live_close_workers;
+        case PTY_DEBUG_WORKER_PSEUDO_CONSOLE:
+            return &live_pseudo_console_workers;
     }
     return NULL;
 }
@@ -43,6 +46,7 @@ static _Atomic uint64_t live_read_workers;
 static _Atomic uint64_t live_write_workers;
 static _Atomic uint64_t live_wait_workers;
 static _Atomic uint64_t live_close_workers;
+static _Atomic uint64_t live_pseudo_console_workers;
 static _Atomic uint64_t pending_write_chunks;
 static _Atomic uint64_t pending_write_bytes;
 
@@ -57,6 +61,8 @@ static _Atomic uint64_t *worker_counter(PtyDebugWorkerKind kind)
             return &live_wait_workers;
         case PTY_DEBUG_WORKER_CLOSE:
             return &live_close_workers;
+        case PTY_DEBUG_WORKER_PSEUDO_CONSOLE:
+            return &live_pseudo_console_workers;
     }
     return NULL;
 }
@@ -116,6 +122,8 @@ FFI_PLUGIN_EXPORT void pty_debug_get_stats(PtyDebugStats *out_stats)
     out_stats->live_write_workers = read_counter(&live_write_workers);
     out_stats->live_wait_workers = read_counter(&live_wait_workers);
     out_stats->live_close_workers = read_counter(&live_close_workers);
+    out_stats->live_pseudo_console_workers =
+        read_counter(&live_pseudo_console_workers);
     out_stats->pending_write_chunks = read_counter(&pending_write_chunks);
     out_stats->pending_write_bytes = read_counter(&pending_write_bytes);
 }

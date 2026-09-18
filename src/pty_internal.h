@@ -112,7 +112,8 @@ typedef enum PtyDebugWorkerKind {
     PTY_DEBUG_WORKER_READ = 0,
     PTY_DEBUG_WORKER_WRITE = 1,
     PTY_DEBUG_WORKER_WAIT = 2,
-    PTY_DEBUG_WORKER_CLOSE = 3
+    PTY_DEBUG_WORKER_CLOSE = 3,
+    PTY_DEBUG_WORKER_PSEUDO_CONSOLE = 4
 } PtyDebugWorkerKind;
 
 void pty_debug_worker_started(PtyDebugWorkerKind kind);

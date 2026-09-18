@@ -404,6 +404,9 @@ final class PtyDebugStats extends ffi.Struct {
   external int live_close_workers;
 
   @ffi.Uint64()
+  external int live_pseudo_console_workers;
+
+  @ffi.Uint64()
   external int pending_write_chunks;
 
   @ffi.Uint64()

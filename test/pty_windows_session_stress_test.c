@@ -91,7 +91,9 @@ static int wait_for_zero_resources(void)
         pty_debug_get_stats(&stats);
         if (stats.live_sessions == 0 && stats.live_read_workers == 0 &&
             stats.live_write_workers == 0 && stats.live_wait_workers == 0 &&
-            stats.live_close_workers == 0 && stats.pending_write_chunks == 0 &&
+            stats.live_close_workers == 0 &&
+            stats.live_pseudo_console_workers == 0 &&
+            stats.pending_write_chunks == 0 &&
             stats.pending_write_bytes == 0) {
             return 1;
         }
@@ -198,6 +200,7 @@ int main(void)
     assert(stats.live_write_workers == 0);
     assert(stats.live_wait_workers == 0);
     assert(stats.live_close_workers == 0);
+    assert(stats.live_pseudo_console_workers == 0);
     assert(stats.pending_write_chunks == 0);
     assert(stats.pending_write_bytes == 0);
     assert(process_handle_count() == baseline_handle_count);
