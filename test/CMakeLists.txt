@@ -99,6 +99,12 @@ else()
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/unix/pty_unix_spawn.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"
   )
+  add_pty_native_test(
+    pty_unix_signal_state_test
+    pty_unix_signal_state_test.c
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/unix/pty_unix_spawn.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"
+  )
   set(PTY_SESSION_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/flutter_pty.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"

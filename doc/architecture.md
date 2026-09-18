@@ -131,6 +131,11 @@ and uses `execve()` with an explicit environment. A close-on-exec status pipe
 communicates `setsid`, controlling-terminal, `dup2`, `chdir`, and `execve`
 failures from the child without allocating after `fork()`.
 
+The child also clears the inherited signal mask and resets every catchable
+signal disposition to `SIG_DFL` before session setup and `execve`. The mask and
+disposition data are prepared before `fork()`; the child path uses only
+async-signal-safe system calls and stack data.
+
 PR CI also runs a source-level guard over that branch to reject allocator,
 environment lookup, formatting, pthread, Dart API, and `execvp` calls from
 being reintroduced there. The scheduled fork-safety test exercises the same

@@ -462,22 +462,18 @@ static void child_report_error(int fd, PtyChildStage stage, int error_number)
     }
 }
 
-static void pty_unix_reset_child_signals(
+static int pty_unix_reset_child_signals(
     const struct sigaction *default_signal_action)
 {
-    sigaction(SIGABRT, default_signal_action, NULL);
-    sigaction(SIGALRM, default_signal_action, NULL);
-    sigaction(SIGBUS, default_signal_action, NULL);
-    sigaction(SIGCHLD, default_signal_action, NULL);
-    sigaction(SIGFPE, default_signal_action, NULL);
-    sigaction(SIGHUP, default_signal_action, NULL);
-    sigaction(SIGILL, default_signal_action, NULL);
-    sigaction(SIGINT, default_signal_action, NULL);
-    sigaction(SIGPIPE, default_signal_action, NULL);
-    sigaction(SIGQUIT, default_signal_action, NULL);
-    sigaction(SIGSEGV, default_signal_action, NULL);
-    sigaction(SIGTERM, default_signal_action, NULL);
-    sigaction(SIGTRAP, default_signal_action, NULL);
+    for (int signal_number = 1; signal_number < NSIG; signal_number++) {
+        if (signal_number == SIGKILL || signal_number == SIGSTOP) continue;
+        if (sigaction(signal_number, default_signal_action, NULL) == 0) {
+            continue;
+        }
+        if (errno == EINVAL) continue;
+        return -1;
+    }
+    return 0;
 }
 
 static void close_extra_fds(int status_fd, int maximum_fd)
@@ -722,6 +718,22 @@ int pty_unix_spawn(const PtySpawnOptions *options,
         .sa_handler = SIG_DFL,
     };
     sigemptyset(&default_signal_action.sa_mask);
+    sigset_t empty_signal_mask;
+    if (sigemptyset(&empty_signal_mask) != 0) {
+        const int error_number = errno;
+        close(status_pipe[0]);
+        close(status_fd);
+        cleanup_failed_child(-1, master);
+        close(slave);
+        free_string_vector(argv, options->argument_count + 1);
+        free_string_vector(envp, options->environment_count);
+        free(resolved_executable);
+        pty_error_set_errno(error,
+                            PTY_ERROR_SPAWN_FAILED,
+                            error_number,
+                            "preparing child signal mask failed");
+        return 0;
+    }
     const pid_t child = fork();
     if (child < 0) {
         const int error_number = errno;
@@ -737,7 +749,17 @@ int pty_unix_spawn(const PtySpawnOptions *options,
         return 0;
     }
     if (child == 0) {
-        pty_unix_reset_child_signals(&default_signal_action);
+        if (sigprocmask(SIG_SETMASK, &empty_signal_mask, NULL) != 0) {
+            child_report_error(status_fd, PTY_CHILD_STAGE_SIGNAL_MASK, errno);
+            _exit(126);
+        }
+        if (pty_unix_reset_child_signals(&default_signal_action) != 0) {
+            child_report_error(
+                status_fd,
+                PTY_CHILD_STAGE_SIGNAL_DISPOSITION,
+                errno);
+            _exit(126);
+        }
         close(master);
         close(status_pipe[0]);
         if (setsid() < 0) {

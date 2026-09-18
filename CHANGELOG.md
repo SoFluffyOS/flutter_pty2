@@ -2,6 +2,8 @@
 
 * Preserve standard Unix PTY line discipline instead of forcing raw mode, with
   integration coverage for Ctrl-C through `VINTR`.
+* Reset the Unix child signal mask and all catchable signal dispositions before
+  `execve`, with inherited signal-state regression coverage.
 * Export the Dart dynamic-link API symbols from Apple CocoaPods builds.
 * Export clean-slate and compatibility FFI entry points from hidden-visibility
   Apple builds.
