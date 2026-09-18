@@ -276,6 +276,7 @@ jobs:
           if ($null -eq $fixture) { throw 'pty_test_child.exe was not built' }
           $env:FLUTTER_PTY2_LIBRARY = $library.FullName
           $env:PTY_TEST_CHILD = $fixture.FullName
+          $env:PTY_TEST_FORCE_CLOSE_THREAD_FAILURE = '1'
           $env:PATH = "$($library.DirectoryName);$env:PATH"
           python tool/run_flutter_test_with_vm_service.py test/clean_slate_finalizer_test.dart
 
