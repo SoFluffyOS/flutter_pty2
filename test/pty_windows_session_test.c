@@ -243,6 +243,9 @@ int main(void)
     assert(events.output_length >= strlen("native-session"));
     assert(events.output_closed == 1);
     assert(events.async_error == 0);
+    EnterCriticalSection(&events.mutex);
+    assert(events.session_closed == 0);
+    LeaveCriticalSection(&events.mutex);
     PtyError signal_error;
     assert(pty_session_send_signal(session, 15, 0, &signal_error) == 0);
     assert(signal_error.kind == PTY_ERROR_UNSUPPORTED);
