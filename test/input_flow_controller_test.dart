@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_pty2/src/internal/input_flow_controller.dart';
@@ -129,7 +130,8 @@ void main() {
     await Future.wait([firstExpectation, secondExpectation]);
   });
 
-  test('snapshots data before retrying after native backpressure', () async {
+  test('retains caller data while retrying after native backpressure',
+      () async {
     final accepted = <Uint8List>[];
     var backpressured = true;
     final input = InputFlowController(
@@ -144,7 +146,6 @@ void main() {
     );
     final data = Uint8List.fromList([1, 2, 3, 4]);
     final write = input.write(data);
-    data.setAll(0, [9, 9, 9, 9]);
 
     backpressured = false;
     input.handleWritable();
@@ -156,6 +157,39 @@ void main() {
       Uint8List.fromList([1, 2]),
       Uint8List.fromList([3, 4]),
     ]);
+  });
+
+  test('bounds owned bytes for a write larger than the pending window',
+      () async {
+    final chunks = <Uint8List>[];
+    var maximumOwnedBytes = 0;
+    late final InputFlowController input;
+    input = InputFlowController(
+      maxChunkSize: 2,
+      maxPendingBytes: 4,
+      nativeTryWrite: (_, bytes) {
+        chunks.add(Uint8List.fromList(bytes));
+        maximumOwnedBytes = math.max(
+          maximumOwnedBytes,
+          input.debugOwnedPendingBytes + bytes.length,
+        );
+        return PtyWriteResult.accepted;
+      },
+    );
+    final write = input.write(Uint8List.fromList(
+      List<int>.generate(100, (index) => index),
+    ));
+
+    for (var requestId = 1; requestId <= 50; requestId++) {
+      input.handleWriteComplete(requestId);
+    }
+    await write;
+
+    expect(maximumOwnedBytes, lessThanOrEqualTo(4));
+    expect(chunks, everyElement(hasLength(2)));
+    expect(chunks.expand((chunk) => chunk).toList(),
+        List<int>.generate(100, (index) => index));
+    expect(input.debugOwnedPendingBytes, 0);
   });
 
   test('closes all pending writes with the same error', () async {

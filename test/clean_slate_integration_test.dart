@@ -890,6 +890,40 @@ void main() {
   );
 
   test(
+    'bounds a single large write while the child reads slowly',
+    () async {
+      final child = fixture;
+      if (child == null) return;
+      const transferSize = 32 * 1024 * 1024;
+      final expected = Uint8List(transferSize);
+      for (var index = 0; index < expected.length; index++) {
+        expected[index] = index % 251;
+      }
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: child,
+          arguments: const ['slow-copy-input', '$transferSize', '1'],
+          inputBufferBytes: 64 * 1024,
+        ),
+      );
+      final binaryOutput = await _listenForBinaryOutput(session);
+      try {
+        await session.input.write(expected);
+        final exit = await session.done.timeout(const Duration(minutes: 2));
+
+        expect(exit, isA<PtyExitCode>());
+        if (exit case PtyExitCode(:final code)) expect(code, 0);
+        expect(binaryOutput.bytes, expected);
+      } finally {
+        await binaryOutput.subscription.cancel();
+        await session.close();
+      }
+    },
+    skip: skipReason,
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  test(
     'reports a typed error for a missing executable',
     () async {
       await expectLater(

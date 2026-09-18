@@ -39,13 +39,16 @@ final class InputFlowController implements PtyInput {
   }
 
   final Queue<_WriteRequest> _admissions = Queue<_WriteRequest>();
-  final Queue<_WriteOperation> _waiting = Queue<_WriteOperation>();
+  final Queue<_WriteRequest> _waiting = Queue<_WriteRequest>();
   final Map<int, _PendingWrite> _inflight = <int, _PendingWrite>{};
 
   int _nextRequestId = 1;
-  int _pendingBytes = 0;
+  int _ownedPendingBytes = 0;
   bool _waitingForWritable = false;
   bool _closed = false;
+
+  /// Bytes copied into pending Dart/native write storage.
+  int get debugOwnedPendingBytes => _ownedPendingBytes;
 
   @override
   Future<void> write(Uint8List data) async {
@@ -54,11 +57,10 @@ final class InputFlowController implements PtyInput {
 
     _retainOwner();
     final request = _WriteRequest(data);
-    request.completion = _waitForOperation(request.admitted.future);
     _admissions.addLast(request);
     _pumpAdmissions();
     try {
-      await request.completion;
+      await request.completer.future;
     } finally {
       _releaseOwnerIfIdle();
     }
@@ -78,6 +80,9 @@ final class InputFlowController implements PtyInput {
     if (_admissions.isNotEmpty || _waiting.isNotEmpty || _waitingForWritable) {
       return PtyWriteResult.backpressured;
     }
+    if (data.length > maxPendingBytes - _ownedPendingBytes) {
+      return PtyWriteResult.backpressured;
+    }
 
     _retainOwner();
     final id = _nextRequestId++;
@@ -85,7 +90,8 @@ final class InputFlowController implements PtyInput {
     try {
       result = nativeTryWrite(id, data);
       if (result == PtyWriteResult.accepted) {
-        final pending = _PendingWrite(id: id);
+        _ownedPendingBytes += data.length;
+        final pending = _PendingWrite(id: id, bytes: data.length);
         _inflight[id] = pending;
         unawaited(pending.completer.future.catchError((Object _) {}));
       }
@@ -103,10 +109,10 @@ final class InputFlowController implements PtyInput {
   @override
   Future<void> flush() {
     final futures = <Future<void>>[
-      for (final request in _admissions) request.completion,
-      for (final operation in _waiting) operation.completer.future,
+      for (final request in _admissions) request.completer.future,
+      for (final request in _waiting) request.completer.future,
       for (final pending in _inflight.values)
-        if (pending.operation == null) pending.completer.future,
+        if (pending.request == null) pending.completer.future,
     ];
     return Future.wait(futures);
   }
@@ -121,18 +127,20 @@ final class InputFlowController implements PtyInput {
   void handleWriteComplete(int requestId) {
     final pending = _inflight.remove(requestId);
     if (pending == null) return;
-    final operation = pending.operation;
-    switch (operation) {
+    _ownedPendingBytes -= pending.bytes;
+    final request = pending.request;
+    switch (request) {
       case null:
         if (!pending.completer.isCompleted) pending.completer.complete();
-      case final operation:
-        operation.inflightCount--;
-        if (operation.offset >= operation.data.length &&
-            operation.inflightCount == 0) {
-          _waiting.removeFirst();
-          _pendingBytes -= operation.data.length;
-          if (!operation.completer.isCompleted) {
-            operation.completer.complete();
+      case final request:
+        request.inflightBytes -= pending.bytes;
+        if (request.offset >= request.data.length &&
+            request.inflightBytes == 0) {
+          if (_waiting.isNotEmpty && identical(_waiting.first, request)) {
+            _waiting.removeFirst();
+          }
+          if (!request.completer.isCompleted) {
+            request.completer.complete();
           }
           _pumpAdmissions();
         }
@@ -149,63 +157,63 @@ final class InputFlowController implements PtyInput {
     if (_closed) return;
     _closed = true;
     for (final request in _admissions) {
-      if (!request.admitted.isCompleted) {
-        request.admitted.completeError(error, stackTrace);
+      if (!request.completer.isCompleted) {
+        request.completer.completeError(error, stackTrace);
       }
     }
     _admissions.clear();
-    for (final operation in _waiting) {
-      if (!operation.completer.isCompleted) {
-        operation.completer.completeError(error, stackTrace);
+    for (final request in _waiting) {
+      if (!request.completer.isCompleted) {
+        request.completer.completeError(error, stackTrace);
       }
     }
     for (final pending in _inflight.values) {
-      if (pending.operation == null && !pending.completer.isCompleted) {
+      if (pending.request == null && !pending.completer.isCompleted) {
         pending.completer.completeError(error, stackTrace);
       }
     }
     _waiting.clear();
     _inflight.clear();
-    _pendingBytes = 0;
+    _ownedPendingBytes = 0;
     _owner = null;
-  }
-
-  Future<void> _waitForOperation(
-    Future<_WriteOperation> admitted,
-  ) async {
-    final operation = await admitted;
-    await operation.completer.future;
   }
 
   void _pumpAdmissions() {
     if (_closed) return;
     while (_admissions.isNotEmpty) {
       final request = _admissions.first;
-      if (!_canAdmit(request.data.length)) return;
+      if (_waiting.isNotEmpty || _ownedPendingBytes >= maxPendingBytes) {
+        return;
+      }
       _admissions.removeFirst();
-      final operation = _WriteOperation(Uint8List.fromList(request.data));
-      _pendingBytes += operation.data.length;
-      _waiting.addLast(operation);
-      request.admitted.complete(operation);
+      _waiting.addLast(request);
       _pump();
+      if (_waiting.isNotEmpty && identical(_waiting.first, request)) return;
     }
-  }
-
-  bool _canAdmit(int length) {
-    if (length > maxPendingBytes) return _pendingBytes == 0;
-    return _pendingBytes <= maxPendingBytes - length;
   }
 
   void _pump() {
     if (_closed || _waitingForWritable) return;
     while (_waiting.isNotEmpty) {
-      final operation = _waiting.first;
-      if (operation.offset >= operation.data.length) return;
-      final end =
-          math.min(operation.offset + maxChunkSize, operation.data.length);
-      final chunk = Uint8List(end - operation.offset)
-        ..setRange(0, end - operation.offset, operation.data, operation.offset);
-      final requestId = operation.requestId ??= _nextRequestId++;
+      final request = _waiting.first;
+      if (request.offset >= request.data.length) {
+        if (request.inflightBytes == 0) {
+          _waiting.removeFirst();
+          if (!request.completer.isCompleted) request.completer.complete();
+          continue;
+        }
+        return;
+      }
+      final available = maxPendingBytes - _ownedPendingBytes;
+      if (available == 0) return;
+      final end = math.min(
+        request.offset + maxChunkSize,
+        math.min(request.data.length, request.offset + available),
+      );
+      final length = end - request.offset;
+      final chunk = Uint8List(length)
+        ..setRange(0, length, request.data, request.offset);
+      final requestId = request.retryRequestId ??= _nextRequestId++;
       PtyWriteResult result;
       try {
         result = nativeTryWrite(requestId, chunk);
@@ -215,12 +223,14 @@ final class InputFlowController implements PtyInput {
       }
       switch (result) {
         case PtyWriteResult.accepted:
-          operation.requestId = null;
-          operation.offset = end;
-          operation.inflightCount++;
+          request.retryRequestId = null;
+          request.offset = end;
+          request.inflightBytes += length;
+          _ownedPendingBytes += length;
           _inflight[requestId] = _PendingWrite(
             id: requestId,
-            operation: operation,
+            request: request,
+            bytes: length,
           );
         case PtyWriteResult.backpressured:
           _waitingForWritable = true;
@@ -249,24 +259,17 @@ final class _WriteRequest {
   _WriteRequest(this.data);
 
   final Uint8List data;
-  final admitted = Completer<_WriteOperation>();
-  late final Future<void> completion;
+  final completer = Completer<void>();
+  int offset = 0;
+  int inflightBytes = 0;
+  int? retryRequestId;
 }
 
 final class _PendingWrite {
-  _PendingWrite({required this.id, this.operation});
+  _PendingWrite({required this.id, required this.bytes, this.request});
 
   final int id;
-  final _WriteOperation? operation;
+  final int bytes;
+  final _WriteRequest? request;
   final completer = Completer<void>();
-}
-
-final class _WriteOperation {
-  _WriteOperation(this.data);
-
-  final Uint8List data;
-  final completer = Completer<void>();
-  int offset = 0;
-  int inflightCount = 0;
-  int? requestId;
 }
