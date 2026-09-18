@@ -128,6 +128,7 @@ static void windows_close_pseudo_console_now(PtySession *session)
     pseudo_console = platform->pseudo_console;
     LeaveCriticalSection(&platform->mutex);
 
+    pty_debug_pseudo_console_close();
     ClosePseudoConsole(pseudo_console);
     windows_mark_pseudo_console_closed(platform);
 }
@@ -190,6 +191,7 @@ static DWORD WINAPI windows_pseudo_console_close_worker(void *argument)
     PtySession *session = argument;
     PtyWindowsPlatform *platform = windows_platform(session);
     if (platform != NULL && platform->pseudo_console != NULL) {
+        pty_debug_pseudo_console_close();
         ClosePseudoConsole(platform->pseudo_console);
         windows_mark_pseudo_console_closed(platform);
     }
@@ -233,6 +235,7 @@ static void windows_start_pseudo_console_close_worker(PtySession *session)
     // safe and preserves exactly-once close semantics.
     pty_debug_worker_finished(PTY_DEBUG_WORKER_PSEUDO_CONSOLE);
     pty_session_release(session);
+    pty_debug_pseudo_console_close();
     ClosePseudoConsole(platform->pseudo_console);
     windows_mark_pseudo_console_closed(platform);
 }
@@ -757,6 +760,7 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         CloseHandle(job);
         CloseHandle(input_write);
         CloseHandle(output_read);
+        pty_debug_pseudo_console_close();
         ClosePseudoConsole(pseudo_console);
         post_session_event(
             session,

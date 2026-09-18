@@ -414,6 +414,9 @@ final class PtyDebugStats extends ffi.Struct {
 
   @ffi.Uint64()
   external int inflight_write_bytes;
+
+  @ffi.Uint64()
+  external int pseudo_console_close_calls;
 }
 
 final class PtySize extends ffi.Struct {

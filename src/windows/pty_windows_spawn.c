@@ -379,6 +379,7 @@ failure:
         *job = NULL;
     }
     if (*pseudo_console != NULL) {
+        pty_debug_pseudo_console_close();
         ClosePseudoConsole(*pseudo_console);
         *pseudo_console = NULL;
     }

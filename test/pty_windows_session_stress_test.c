@@ -155,6 +155,8 @@ int main(void)
     const DWORD current_process_id = GetCurrentProcessId();
     const DWORD baseline_thread_count = process_thread_count(current_process_id);
     const DWORD baseline_child_count = child_process_count(current_process_id);
+    PtyDebugStats baseline_stats;
+    pty_debug_get_stats(&baseline_stats);
 
     int cycle_count = 1000;
     const char *configured_cycle_count = getenv("PTY_WINDOWS_STRESS_CYCLES");
@@ -205,6 +207,9 @@ int main(void)
     assert(stats.pending_write_chunks == 0);
     assert(stats.pending_write_bytes == 0);
     assert(stats.inflight_write_bytes == 0);
+    assert(stats.pseudo_console_close_calls -
+               baseline_stats.pseudo_console_close_calls ==
+           (uint64_t)cycle_count);
     assert(process_handle_count() == baseline_handle_count);
     assert(process_thread_count(current_process_id) == baseline_thread_count);
     assert(child_process_count(current_process_id) == baseline_child_count);
