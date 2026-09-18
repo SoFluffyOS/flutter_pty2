@@ -11,8 +11,7 @@
 * Reset the Unix child signal mask and all catchable signal dispositions before
   `execve`, with inherited signal-state regression coverage.
 * Export the Dart dynamic-link API symbols from Apple CocoaPods builds.
-* Export clean-slate and compatibility FFI entry points from hidden-visibility
-  Apple builds.
+* Export clean-slate FFI entry points from hidden-visibility Apple builds.
 * Request native shutdown when a fatal asynchronous I/O error reaches Dart.
 * Request native shutdown when a synchronous native input write fails.
 * Bound admitted asynchronous Dart input by the configured input buffer window.
@@ -108,8 +107,8 @@
 * Align the minimum Flutter SDK constraint with the Dart 3 implementation.
 * Preserve buffered Unix output when a child exits during read backpressure.
 * Add Swift Package Manager support for iOS and macOS.
-* Share native-library resolution with the legacy API and honor configured
-  library overrides consistently.
+* Share native-library resolution and honor configured library overrides
+  consistently.
 * Reject malformed native event messages with extra fields and make event-pump
   cleanup idempotent.
 
