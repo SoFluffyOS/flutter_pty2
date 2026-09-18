@@ -59,8 +59,9 @@ Dart writes. Concurrent writes wait in order for space in that window.
 
 ### Input and lifecycle semantics
 
-`input.write(bytes)` accepts arbitrary binary data and completes when the
-native backend has written those bytes or fails with a typed exception. Use
+`input.write(bytes)` accepts arbitrary binary data and waits for bounded input
+admission before completing when the native backend has written those bytes.
+Do not mutate the supplied buffer until its future completes. Use
 `tryWrite(bytes)` for a non-blocking operation: it returns `accepted` when the
 request was queued, `backpressured` when the bounded input queue is full, or
 `closed` after the session has stopped accepting input. Accepted `tryWrite`
