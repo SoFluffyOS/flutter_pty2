@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 #include <windows.h>
 
 #include "../common/pty_error.h"
@@ -89,9 +90,12 @@ static PtyReleasePseudoConsoleFn lookup_release_pseudo_console(void)
 {
     const HMODULE module = GetModuleHandleW(L"kernel32.dll");
     if (module == NULL) return NULL;
-    return (PtyReleasePseudoConsoleFn)GetProcAddress(
-        module,
-        "ReleasePseudoConsole");
+    const FARPROC address = GetProcAddress(module, "ReleasePseudoConsole");
+    PtyReleasePseudoConsoleFn release_pseudo_console = NULL;
+    memcpy(&release_pseudo_console,
+           &address,
+           sizeof(release_pseudo_console));
+    return release_pseudo_console;
 }
 
 static void windows_mark_pseudo_console_closed(PtyWindowsPlatform *platform)
