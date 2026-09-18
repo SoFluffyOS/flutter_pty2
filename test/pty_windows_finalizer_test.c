@@ -68,6 +68,8 @@ int main(void)
 
     PtySession *session = NULL;
     PtyError error;
+    PtyDebugStats baseline_stats;
+    pty_debug_get_stats(&baseline_stats);
     assert(pty_session_start(&options, &session, &error) == 1);
     assert(session != NULL);
     for (int attempt = 0; attempt < 500 && !spawned_event_received();
@@ -81,5 +83,10 @@ int main(void)
     const ULONGLONG elapsed = GetTickCount64() - start;
     assert(elapsed < 1000);
     assert(wait_for_zero_resources());
+    PtyDebugStats stats;
+    pty_debug_get_stats(&stats);
+    assert(stats.pseudo_console_close_calls -
+               baseline_stats.pseudo_console_close_calls ==
+           1);
     return 0;
 }
