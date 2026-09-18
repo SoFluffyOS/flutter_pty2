@@ -171,11 +171,7 @@ jobs:
           $env:FLUTTER_PTY2_LIBRARY = $library.FullName
           $env:PTY_TEST_CHILD = $fixture.FullName
           $env:PATH = "$($library.DirectoryName);$env:PATH"
-          flutter test
-          test/clean_slate_windows_integration_test.dart
-          test/clean_slate_lifecycle_stress_test.dart
-          test/clean_slate_exit_drain_stress_test.dart
-          test/clean_slate_spawn_failure_stress_test.dart
+          flutter test test/clean_slate_windows_integration_test.dart test/clean_slate_lifecycle_stress_test.dart test/clean_slate_exit_drain_stress_test.dart test/clean_slate_spawn_failure_stress_test.dart
 
       - name: Run configured clean-slate Windows large-transfer tests
         if: runner.os == 'Windows'
