@@ -92,8 +92,8 @@ guarantee cleanup of every detached descendant.
 
 Unix has the native async session, bounded input queue, output credits,
 structured errors, and lifecycle stress coverage. Windows has the ConPTY,
-Job Object, worker implementation, and scheduled native/integration stress
-coverage, but requires runtime verification on Windows. Android has an
+Job Object, worker implementation, and mandatory Windows native/integration
+stress gates in CI; local runtime verification still requires Windows. Android has an
 `arm64-v8a` and `x86_64` NDK build paths and has passed the clean-slate output
 and input integration subset on an API 35 emulator. iOS has passed the
 clean-slate output and input integration subset on an iPhone simulator;

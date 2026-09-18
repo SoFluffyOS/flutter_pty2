@@ -1,6 +1,10 @@
 name: native-quality
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   schedule:
     - cron: '17 2 * * *'
   workflow_dispatch:
@@ -186,7 +190,11 @@ jobs:
         run: flutter test test/clean_slate_large_transfer_test.dart
 
   windows-runtime-stress:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [windows-2022, windows-latest]
+
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 

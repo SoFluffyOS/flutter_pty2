@@ -173,6 +173,8 @@ jobs:
           $env:PATH = "$($library.DirectoryName);$env:PATH"
           flutter test
           test/clean_slate_windows_integration_test.dart
+          test/clean_slate_lifecycle_stress_test.dart
+          test/clean_slate_exit_drain_stress_test.dart
           test/clean_slate_spawn_failure_stress_test.dart
 
       - name: Run configured clean-slate Windows large-transfer tests

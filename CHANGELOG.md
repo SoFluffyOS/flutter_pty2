@@ -4,6 +4,8 @@
   native backend.
 * Build clean Unix and Windows native sessions as separate translation units.
 * Preserve typed native I/O failures from synchronous `tryWrite` calls.
+* Make Windows runtime, native stress, CTest, and sanitizer workflows required
+  on pull requests and main-branch pushes.
 * Preserve standard Unix PTY line discipline instead of forcing raw mode, with
   integration coverage for Ctrl-C through `VINTR`.
 * Reset the Unix child signal mask and all catchable signal dispositions before
