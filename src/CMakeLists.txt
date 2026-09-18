@@ -7,8 +7,8 @@ project(flutter_pty2_library VERSION 1.0.2 LANGUAGES C)
 
 find_package(Threads REQUIRED)
 
-add_library(flutter_pty2 SHARED
-  "flutter_pty.c"
+set(FLUTTER_PTY2_COMMON_SOURCES
+  "include/dart_api_dl.c"
   "common/pty_error.c"
   "common/pty_event.c"
   "common/pty_refcount.c"
@@ -16,14 +16,26 @@ add_library(flutter_pty2 SHARED
   "common/pty_write_queue.c"
 )
 
-target_compile_features(flutter_pty2 PRIVATE c_std_11)
-
 if (WIN32)
-  target_sources(flutter_pty2 PRIVATE
+  set(FLUTTER_PTY2_PLATFORM_SOURCES
     windows/pty_windows_commandline.c
     windows/pty_windows_environment.c
+    windows/pty_windows_spawn.c
+    windows/pty_windows_session.c
+  )
+else()
+  set(FLUTTER_PTY2_PLATFORM_SOURCES
+    unix/pty_unix_spawn.c
+    unix/pty_unix_session.c
   )
 endif()
+
+add_library(flutter_pty2 SHARED
+  ${FLUTTER_PTY2_COMMON_SOURCES}
+  ${FLUTTER_PTY2_PLATFORM_SOURCES}
+)
+
+target_compile_features(flutter_pty2 PRIVATE c_std_11)
 
 option(FLUTTER_PTY2_BUILD_TESTS "Build native flutter_pty2 tests" OFF)
 

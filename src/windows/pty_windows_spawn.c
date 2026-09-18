@@ -11,14 +11,7 @@
 #include "../pty_internal.h"
 #include "pty_windows_commandline.h"
 #include "pty_windows_environment.h"
-
-typedef struct PtyWindowsOwnedOptions {
-    PtySpawnOptions options;
-    char *executable;
-    char **arguments;
-    char **environment;
-    char *working_directory;
-} PtyWindowsOwnedOptions;
+#include "pty_windows_spawn.h"
 
 static char *windows_copy_string(const char *value)
 {
@@ -82,9 +75,9 @@ static char **windows_copy_vector(const char *const *values,
     return result;
 }
 
-static int windows_clone_options(const PtySpawnOptions *source,
-                                 PtyWindowsOwnedOptions *destination,
-                                 PtyError *error)
+int pty_windows_clone_options(const PtySpawnOptions *source,
+                              PtyWindowsOwnedOptions *destination,
+                              PtyError *error)
 {
     memset(destination, 0, sizeof(*destination));
     destination->options = *source;
@@ -125,7 +118,7 @@ static int windows_clone_options(const PtySpawnOptions *source,
     return 1;
 }
 
-static void windows_free_options(PtyWindowsOwnedOptions *options)
+void pty_windows_free_options(PtyWindowsOwnedOptions *options)
 {
     if (options == NULL) return;
     free(options->executable);
@@ -173,15 +166,15 @@ static PtyErrorKind windows_spawn_error_kind(DWORD error_code)
     }
 }
 
-static int windows_create_process(const PtySpawnOptions *options,
-                                  HANDLE *input_write,
-                                  HANDLE *output_read,
-                                  HANDLE *process,
-                                  HANDLE *process_thread,
-                                  HANDLE *job,
-                                  DWORD *process_id,
-                                  HPCON *pseudo_console,
-                                  PtyError *error)
+int pty_windows_create_process(const PtySpawnOptions *options,
+                               HANDLE *input_write,
+                               HANDLE *output_read,
+                               HANDLE *process,
+                               HANDLE *process_thread,
+                               HANDLE *job,
+                               DWORD *process_id,
+                               HPCON *pseudo_console,
+                               PtyError *error)
 {
     HANDLE input_read = NULL;
     HANDLE output_write = NULL;

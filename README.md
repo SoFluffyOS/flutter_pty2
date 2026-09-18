@@ -9,9 +9,8 @@ The original package is no longer maintained, so this fork continues the package
 under a new pub package name.
 
 This package provides a Flutter FFI pseudo-terminal implementation for spawning
-and controlling terminal processes. The clean-slate 2.0 API is available
-alongside the existing compatibility API; platform verification is tracked
-separately for Windows, Android, and iOS.
+and controlling terminal processes. Version 2.0 uses the clean-slate session
+API; platform verification is tracked separately for Windows, Android, and iOS.
 
 The package requires Dart 3 and Flutter 3.10 or newer.
 
@@ -87,10 +86,6 @@ the slave PTY starts with standard terminal line discipline, so input byte
 operations are unsupported on Windows. Windows uses ConPTY and Job Object
 containment, while Unix process-tree termination is best effort and does not
 guarantee cleanup of every detached descendant.
-
-The existing `Pty.start` API remains available from
-`package:flutter_pty2/flutter_pty.dart` as a compatibility layer. It uses the
-legacy manual-acknowledgement semantics and is not the 2.0 API.
 
 ### Clean-slate backend status
 
@@ -195,15 +190,10 @@ scheduled runs.
 
 ## Native architecture
 
-The clean-slate API uses one Dart receive port per session and a native
-reference-counted session. Unix uses a poll-based reactor with bounded output
-credit and input writes; Windows uses ConPTY with dedicated reader, writer,
-waiter, and close workers. The finalizer only starts non-blocking native
-cleanup; deterministic callers should still await `close()`. The detailed
-ownership and platform design is documented in
+The API uses one Dart receive port per session and a native reference-counted
+session. Unix uses a poll-based reactor with bounded output credit and input
+writes; Windows uses ConPTY with dedicated reader, writer, waiter, and close
+workers. The finalizer only starts non-blocking native cleanup; deterministic
+callers should still await `close()`. The detailed ownership and platform
+design is documented in
 [`doc/architecture.md`](doc/architecture.md).
-
-The legacy `Pty.start` API remains available from
-`package:flutter_pty2/flutter_pty.dart`. It is maintained for compatibility
-and retains its manual output acknowledgement behavior; new code should use
-`package:flutter_pty2/flutter_pty2.dart`.

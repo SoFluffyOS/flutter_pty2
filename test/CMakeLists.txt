@@ -34,6 +34,20 @@ function(add_pty_native_test test_name source_file)
 endfunction()
 
 if (WIN32)
+  set(PTY_COMMON_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/include/dart_api_dl.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_event.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_refcount.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_debug_stats.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_write_queue.c"
+  )
+  set(PTY_PLATFORM_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_commandline.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_environment.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_spawn.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_session.c"
+  )
   add_pty_native_test(
     pty_windows_environment_test
     pty_windows_environment_test.c
@@ -47,38 +61,20 @@ if (WIN32)
   add_pty_native_test(
     pty_windows_session_test
     pty_windows_session_test.c
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/flutter_pty.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_commandline.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_environment.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_event.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_refcount.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_debug_stats.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_write_queue.c"
+    ${PTY_COMMON_SOURCES}
+    ${PTY_PLATFORM_SOURCES}
   )
   add_pty_native_test(
     pty_windows_session_stress_test
     pty_windows_session_stress_test.c
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/flutter_pty.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_commandline.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_environment.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_event.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_refcount.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_debug_stats.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_write_queue.c"
+    ${PTY_COMMON_SOURCES}
+    ${PTY_PLATFORM_SOURCES}
   )
   add_pty_native_test(
     pty_event_failure_test
     pty_event_failure_test.c
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/flutter_pty.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_commandline.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/windows/pty_windows_environment.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_event.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_refcount.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_debug_stats.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_write_queue.c"
+    ${PTY_COMMON_SOURCES}
+    ${PTY_PLATFORM_SOURCES}
   )
 else()
   add_pty_native_test(
@@ -106,7 +102,9 @@ else()
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"
   )
   set(PTY_SESSION_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/flutter_pty.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/include/dart_api_dl.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/unix/pty_unix_spawn.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/unix/pty_unix_session.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_error.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_event.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/common/pty_refcount.c"

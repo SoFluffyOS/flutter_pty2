@@ -1,11 +1,10 @@
-import 'package:flutter_pty2/src/environment.dart';
-import 'package:flutter_pty2/src/pty_environment.dart' as clean_slate;
+import 'package:flutter_pty2/src/pty_environment.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('clean-slate Windows environment collapses case collisions', () {
-    final environment = clean_slate.buildEnvironment(
-      const clean_slate.PtyEnvironment.replace({
+  test('case-insensitive replacement collapses duplicate keys', () {
+    final environment = buildEnvironment(
+      const PtyEnvironment.replace({
         'Path': 'first',
         'PATH': 'second',
       }),
@@ -16,288 +15,46 @@ void main() {
     expect(environment['PATH'], 'second');
   });
 
-  test('Windows environment overrides keys case-insensitively', () {
-    final environment = buildPtyEnvironment(
-      {'Path': 'base', 'HOME': 'home'},
-      {'PATH': 'override'},
+  test('inherited environment applies normalized removals and overrides', () {
+    final environment = buildEnvironment(
+      const PtyEnvironment.inherit(
+        overrides: {'PtyFlutter2TestValue': 'override'},
+        remove: {'PATH'},
+      ),
       caseInsensitive: true,
     );
 
-    expect(environment['Path'], isNull);
-    expect(environment['PATH'], 'override');
-    expect(environment['TERM'], 'xterm-256color');
-    expect(environment['COLORTERM'], 'truecolor');
-    expect(environment['TERM_PROGRAM'], 'Lumide');
+    expect(environment['PTYFLUTTER2TESTVALUE'], 'override');
+    expect(environment['PATH'], isNull);
   });
 
-  test('PTY environment provides UTF-8 locale fallback', () {
-    final environment = buildPtyEnvironment(
-      {'HOME': 'home'},
-      null,
+  test('case-sensitive replacement preserves caller keys', () {
+    final environment = buildEnvironment(
+      const PtyEnvironment.replace({
+        'Path': 'first',
+        'PATH': 'second',
+      }),
       caseInsensitive: false,
     );
 
-    expect(environment['LANG'], 'en_US.UTF-8');
-    expect(environment['LC_CTYPE'], 'en_US.UTF-8');
+    expect(environment['Path'], 'first');
+    expect(environment['PATH'], 'second');
   });
 
-  test('PTY environment preserves inherited UTF-8 locale', () {
-    final environment = buildPtyEnvironment(
-      {'LANG': 'vi_VN.UTF-8'},
-      null,
-      caseInsensitive: false,
+  test('environment validation rejects malformed keys and values', () {
+    expect(
+      () => buildEnvironment(
+        const PtyEnvironment.replace({'BAD=KEY': 'value'}),
+        caseInsensitive: false,
+      ),
+      throwsArgumentError,
     );
-
-    expect(environment['LANG'], 'vi_VN.UTF-8');
-    expect(environment['LC_CTYPE'], 'en_US.UTF-8');
-  });
-
-  test('PTY environment upgrades non-UTF-8 locale to UTF-8 fallback', () {
-    final environment = buildPtyEnvironment(
-      {'LANG': 'C', 'LC_CTYPE': 'POSIX'},
-      null,
-      caseInsensitive: false,
+    expect(
+      () => buildEnvironment(
+        const PtyEnvironment.replace({'KEY': 'bad\x00value'}),
+        caseInsensitive: false,
+      ),
+      throwsArgumentError,
     );
-
-    expect(environment['LANG'], 'en_US.UTF-8');
-    expect(environment['LC_CTYPE'], 'en_US.UTF-8');
-  });
-
-  test('PTY environment upgrades non-UTF-8 LC_ALL locale', () {
-    final environment = buildPtyEnvironment(
-      {'LC_ALL': 'C', 'LANG': 'C'},
-      null,
-      caseInsensitive: false,
-    );
-
-    expect(environment['LC_ALL'], 'en_US.UTF-8');
-    expect(environment['LANG'], 'C');
-    expect(environment['LC_CTYPE'], isNull);
-  });
-
-  test('PTY environment preserves explicit UTF-8 LC_ALL locale', () {
-    final environment = buildPtyEnvironment(
-      {'LC_ALL': 'vi_VN.UTF-8', 'LANG': 'C'},
-      null,
-      caseInsensitive: false,
-    );
-
-    expect(environment['LC_ALL'], 'vi_VN.UTF-8');
-    expect(environment['LANG'], 'C');
-    expect(environment['LC_CTYPE'], isNull);
-  });
-
-  test('Windows PTY environment detects locale keys case-insensitively', () {
-    final environment = buildPtyEnvironment(
-      {'lc_ctype': 'UTF-8'},
-      null,
-      caseInsensitive: true,
-    );
-
-    expect(environment['lc_ctype'], 'UTF-8');
-    expect(environment['LANG'], 'en_US.UTF-8');
-  });
-
-  test('Windows PTY environment upgrades locale canonically', () {
-    final environment = buildPtyEnvironment(
-      {'lang': 'C', 'lc_ctype': 'POSIX'},
-      null,
-      caseInsensitive: true,
-    );
-
-    expect(environment['lang'], isNull);
-    expect(environment['lc_ctype'], isNull);
-    expect(environment['LANG'], 'en_US.UTF-8');
-    expect(environment['LC_CTYPE'], 'en_US.UTF-8');
-  });
-
-  test('Windows environment block entries are case-insensitively sorted', () {
-    final entries = orderPtyEnvironment(
-      {'z': 'last', 'Beta': 'middle', 'alpha': 'first'},
-      caseInsensitive: true,
-    );
-
-    expect(entries.map((entry) => entry.key), ['alpha', 'Beta', 'z']);
-  });
-
-  test('PTY environment strips inherited desktop startup tokens', () {
-    final environment = buildPtyEnvironment(
-      {
-        'DESKTOP_STARTUP_ID': 'activation',
-        'XDG_ACTIVATION_TOKEN': 'token',
-        'HOME': 'home',
-      },
-      null,
-      caseInsensitive: false,
-    );
-
-    expect(environment['DESKTOP_STARTUP_ID'], isNull);
-    expect(environment['XDG_ACTIVATION_TOKEN'], isNull);
-    expect(environment['HOME'], 'home');
-  });
-
-  test('Windows PTY environment strips startup tokens case-insensitively', () {
-    final environment = buildPtyEnvironment(
-      {
-        'desktop_startup_id': 'activation',
-        'xdg_activation_token': 'token',
-        'HOME': 'home',
-      },
-      null,
-      caseInsensitive: true,
-    );
-
-    expect(environment['desktop_startup_id'], isNull);
-    expect(environment['xdg_activation_token'], isNull);
-    expect(environment['HOME'], 'home');
-  });
-
-  test('PTY environment strips inherited terminal identity', () {
-    final environment = buildPtyEnvironment(
-      {
-        'ALACRITTY_LOG': '/tmp/alacritty.log',
-        'GHOSTTY_RESOURCES_DIR': '/ghostty',
-        'KITTY_WINDOW_ID': '1',
-        'KONSOLE_VERSION': '250400',
-        'TERM_PROGRAM': 'Apple_Terminal',
-        'TERM_PROGRAM_VERSION': '999',
-        'VTE_VERSION': '7600',
-        'WEZTERM_PANE': '2',
-        'WT_SESSION': 'session',
-      },
-      null,
-      caseInsensitive: false,
-    );
-
-    expect(environment['ALACRITTY_LOG'], isNull);
-    expect(environment['GHOSTTY_RESOURCES_DIR'], isNull);
-    expect(environment['KITTY_WINDOW_ID'], isNull);
-    expect(environment['KONSOLE_VERSION'], isNull);
-    expect(environment['TERM_PROGRAM'], 'Lumide');
-    expect(environment['TERM_PROGRAM_VERSION'], isNull);
-    expect(environment['VTE_VERSION'], isNull);
-    expect(environment['WEZTERM_PANE'], isNull);
-    expect(environment['WT_SESSION'], isNull);
-  });
-
-  test('PTY environment sanitizes caller override identity', () {
-    final environment = buildPtyEnvironment(
-      {'HOME': 'home'},
-      {
-        'ALACRITTY_WINDOW_ID': '1',
-        'GHOSTTY_BIN_DIR': '/ghostty',
-        'TERM_PROGRAM': 'Apple_Terminal',
-        'TERM_PROGRAM_VERSION': '999',
-        'XDG_ACTIVATION_TOKEN': 'token',
-      },
-      caseInsensitive: false,
-    );
-
-    expect(environment['ALACRITTY_WINDOW_ID'], isNull);
-    expect(environment['GHOSTTY_BIN_DIR'], isNull);
-    expect(environment['TERM_PROGRAM'], 'Lumide');
-    expect(environment['TERM_PROGRAM_VERSION'], isNull);
-    expect(environment['XDG_ACTIVATION_TOKEN'], isNull);
-  });
-
-  test('PTY environment keeps caller overrides UTF-8 safe', () {
-    final environment = buildPtyEnvironment(
-      {'LANG': 'en_US.UTF-8'},
-      {'LANG': 'C', 'LC_CTYPE': 'POSIX'},
-      caseInsensitive: false,
-    );
-
-    expect(environment['LANG'], 'en_US.UTF-8');
-    expect(environment['LC_CTYPE'], 'en_US.UTF-8');
-  });
-
-  test('PTY environment can advertise Lumide terminal version', () {
-    final environment = buildPtyEnvironment(
-      {
-        'TERM_PROGRAM_VERSION': 'stale',
-        'HOME': 'home',
-      },
-      null,
-      caseInsensitive: false,
-      terminalProgramVersion: '1.2.3',
-    );
-
-    expect(environment['TERM_PROGRAM'], 'Lumide');
-    expect(environment['TERM_PROGRAM_VERSION'], '1.2.3');
-  });
-
-  test('Windows PTY environment strips terminal identity case-insensitively',
-      () {
-    final environment = buildPtyEnvironment(
-      {
-        'ghostty_resources_dir': '/ghostty',
-        'kitty_window_id': '1',
-        'term_program_version': '999',
-        'vte_version': '7600',
-        'wezterm_pane': '2',
-        'wt_session': 'session',
-      },
-      null,
-      caseInsensitive: true,
-    );
-
-    expect(environment['ghostty_resources_dir'], isNull);
-    expect(environment['kitty_window_id'], isNull);
-    expect(environment['term_program_version'], isNull);
-    expect(environment['vte_version'], isNull);
-    expect(environment['wezterm_pane'], isNull);
-    expect(environment['wt_session'], isNull);
-    expect(environment['TERM_PROGRAM'], 'Lumide');
-  });
-
-  test('Windows PTY environment sanitizes override identity case-insensitively',
-      () {
-    final environment = buildPtyEnvironment(
-      {'HOME': 'home'},
-      {
-        'ghostty_bin_dir': '/ghostty',
-        'term_program': 'Apple_Terminal',
-        'term_program_version': '999',
-        'xdg_activation_token': 'token',
-      },
-      caseInsensitive: true,
-    );
-
-    expect(environment['ghostty_bin_dir'], isNull);
-    expect(environment['term_program'], isNull);
-    expect(environment['term_program_version'], isNull);
-    expect(environment['xdg_activation_token'], isNull);
-    expect(environment['TERM_PROGRAM'], 'Lumide');
-  });
-
-  test('Windows PTY environment publishes terminal version canonically', () {
-    final environment = buildPtyEnvironment(
-      {
-        'term_program_version': 'stale',
-        'HOME': 'home',
-      },
-      null,
-      caseInsensitive: true,
-      terminalProgramVersion: '1.2.3',
-    );
-
-    expect(environment['term_program_version'], isNull);
-    expect(environment['TERM_PROGRAM_VERSION'], '1.2.3');
-  });
-
-  test('Unix environment preserves case-distinct keys and insertion order', () {
-    final environment = buildPtyEnvironment(
-      {'Path': 'base'},
-      {'PATH': 'override'},
-      caseInsensitive: false,
-    );
-    final entries = orderPtyEnvironment(
-      environment,
-      caseInsensitive: false,
-    );
-
-    expect(environment['Path'], 'base');
-    expect(environment['PATH'], 'override');
-    expect(entries.first.key, 'Path');
   });
 }

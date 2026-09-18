@@ -13,7 +13,7 @@ Flutter FFI pseudo-terminal plugin for spawning and controlling terminal process
   s.license          = { :type => 'MIT', :file => '../LICENSE' }
   s.author           = { 'SoFluffy' => 'hi@sofluffy.io' }
 
-  # The forwarder C file imports the shared implementation from `../src/*`.
+  # The forwarder C file imports the clean-slate implementation from `../src/*`.
   s.source           = { :path => '.' }
   s.source_files     = 'flutter_pty2/Sources/flutter_pty2/**/*'
   s.dependency 'FlutterMacOS'
@@ -22,8 +22,7 @@ Flutter FFI pseudo-terminal plugin for spawning and controlling terminal process
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'GCC_PREPROCESSOR_DEFINITIONS' => [
-      'DART_SHARED_LIB=1',
-      'FLUTTER_PTY2_INCLUDE_COMMON_SOURCES=1'
+      'DART_SHARED_LIB=1'
     ]
   }
   s.swift_version = '5.0'

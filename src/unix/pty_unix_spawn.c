@@ -465,7 +465,14 @@ static void child_report_error(int fd, PtyChildStage stage, int error_number)
 static int pty_unix_reset_child_signals(
     const struct sigaction *default_signal_action)
 {
-    for (int signal_number = 1; signal_number < NSIG; signal_number++) {
+#if defined(NSIG)
+    const int signal_count = NSIG;
+#elif defined(__DARWIN_NSIG)
+    const int signal_count = __DARWIN_NSIG;
+#else
+    const int signal_count = 64;
+#endif
+    for (int signal_number = 1; signal_number < signal_count; signal_number++) {
         if (signal_number == SIGKILL || signal_number == SIGSTOP) continue;
         if (sigaction(signal_number, default_signal_action, NULL) == 0) {
             continue;

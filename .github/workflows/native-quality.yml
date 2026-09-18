@@ -32,28 +32,40 @@ jobs:
 
       - name: Run Clang static analyzer
         run: |
-          clang --analyze \
-            --analyzer-output sarif \
-            -std=c11 \
-            -DDART_SHARED_LIB \
-            -DFLUTTER_PTY2_INCLUDE_COMMON_SOURCES \
-            -Isrc \
-            -Isrc/include \
-            -fno-color-diagnostics \
-            -o build/strict-unix/flutter_pty2-analysis.sarif \
-            src/flutter_pty.c
+          sources=(
+            src/include/dart_api_dl.c
+            src/common/pty_error.c
+            src/common/pty_event.c
+            src/common/pty_refcount.c
+            src/common/pty_debug_stats.c
+            src/common/pty_write_queue.c
+            src/unix/pty_unix_spawn.c
+            src/unix/pty_unix_session.c
+          )
+          for source in "${sources[@]}"; do
+            output="build/strict-unix/$(basename "${source}").sarif"
+            clang --analyze \
+              --analyzer-output sarif \
+              -std=c11 \
+              -DDART_SHARED_LIB \
+              -Isrc \
+              -Isrc/include \
+              -fno-color-diagnostics \
+              -o "${output}" \
+              "${source}"
+          done
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          report = json.loads(
-              Path('build/strict-unix/flutter_pty2-analysis.sarif').read_text()
-          )
-          findings = [
-              result
-              for run in report.get('runs', [])
-              for result in run.get('results', [])
-          ]
+          findings = []
+          for report_path in Path('build/strict-unix').glob('*.c.sarif'):
+              report = json.loads(report_path.read_text())
+              findings.extend(
+                  result
+                  for run in report.get('runs', [])
+                  for result in run.get('results', [])
+              )
           if findings:
               print(json.dumps(findings, indent=2))
               raise SystemExit(

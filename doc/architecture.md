@@ -1,9 +1,7 @@
 # `flutter_pty2` architecture
 
-This document describes the clean-slate API exported by
-`package:flutter_pty2/flutter_pty2.dart`. The compatibility API exported by
-`package:flutter_pty2/flutter_pty.dart` retains the original manual-acknowledgement
-model and is intentionally outside this design.
+This document describes the session API exported by
+`package:flutter_pty2/flutter_pty2.dart`.
 
 ## Runtime boundary
 
@@ -159,8 +157,12 @@ and then resumes it. The Job Object uses kill-on-close containment.
 Dedicated reader, writer, waiter, and close workers keep blocking Win32 calls
 off the Dart isolate. The writer handles partial `WriteFile` results and
 reports request completion only after the complete chunk has been handed to
-the PTY input channel. POSIX signals are unsupported on Windows rather than
-being translated into a Job Object termination.
+the PTY input channel. On normal process exit, the waiter releases the ConPTY
+ownership dynamically when supported; older Windows versions use a dedicated
+non-reader close worker. Explicit ownership states make the final close
+exactly once, allowing trailing output to drain before `OUTPUT_CLOSED` and
+`done`. POSIX signals are unsupported on Windows rather than being translated
+into a Job Object termination.
 
 ## Error and capability boundaries
 

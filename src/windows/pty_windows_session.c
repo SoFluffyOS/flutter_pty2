@@ -10,21 +10,9 @@
 #include "../common/pty_error.h"
 #include "../common/pty_event.h"
 #include "../pty_internal.h"
+#include "pty_windows_spawn.h"
 
 #define PTY_WINDOWS_IO_BUFFER_SIZE (64 * 1024)
-
-#ifndef PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE
-#define PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE \
-    ProcThreadAttributeValue(22, FALSE, TRUE, FALSE)
-typedef HANDLE HPCON;
-HRESULT WINAPI CreatePseudoConsole(COORD size,
-                                   HANDLE input,
-                                   HANDLE output,
-                                   DWORD flags,
-                                   HPCON *pseudo_console);
-HRESULT WINAPI ResizePseudoConsole(HPCON pseudo_console, COORD size);
-void WINAPI ClosePseudoConsole(HPCON pseudo_console);
-#endif
 
 typedef HRESULT(WINAPI *PtyReleasePseudoConsoleFn)(HPCON pseudo_console);
 
@@ -726,15 +714,15 @@ static DWORD WINAPI windows_bootstrap(void *argument)
     DWORD worker_error = ERROR_NOT_ENOUGH_MEMORY;
     int worker_start_failed = 0;
     PtyError error;
-    if (!windows_create_process(&bootstrap->options.options,
-                                &input_write,
-                                &output_read,
-                                &process,
-                                &process_thread,
-                                &job,
-                                &process_id,
-                                &pseudo_console,
-                                &error)) {
+    if (!pty_windows_create_process(&bootstrap->options.options,
+                                    &input_write,
+                                    &output_read,
+                                    &process,
+                                    &process_thread,
+                                    &job,
+                                    &process_id,
+                                    &pseudo_console,
+                                    &error)) {
         post_session_event(
             session,
             pty_post_spawn_failed(session->event_port, &error));
@@ -746,7 +734,7 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         post_session_event(
             session,
             pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED));
-        windows_free_options(&bootstrap->options);
+        pty_windows_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
         return 0;
@@ -777,7 +765,7 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         post_session_event(
             session,
             pty_post_simple_event(session->event_port, PTY_EVENT_SESSION_CLOSED));
-        windows_free_options(&bootstrap->options);
+        pty_windows_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
         return 0;
@@ -802,7 +790,7 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         PTY_LIFECYCLE_CLOSING;
     if (close_requested) {
         windows_finish_unstarted_close(session, process_thread);
-        windows_free_options(&bootstrap->options);
+        pty_windows_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
         return 0;
@@ -868,7 +856,7 @@ static DWORD WINAPI windows_bootstrap(void *argument)
                       worker_error,
                       "starting Windows PTY workers failed");
         windows_finish_worker_startup_failure(session, process_thread, &error);
-        windows_free_options(&bootstrap->options);
+        pty_windows_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
         return 0;
@@ -903,7 +891,7 @@ static DWORD WINAPI windows_bootstrap(void *argument)
         }
         windows_post_startup_cancelled(session);
         windows_maybe_post_closed(session);
-        windows_free_options(&bootstrap->options);
+        pty_windows_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
         return 0;
@@ -915,7 +903,7 @@ static DWORD WINAPI windows_bootstrap(void *argument)
                       GetLastError(),
                       "resuming ConPTY process failed");
         windows_finish_worker_startup_failure(session, process_thread, &error);
-        windows_free_options(&bootstrap->options);
+        pty_windows_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
         return 0;
@@ -928,7 +916,7 @@ static DWORD WINAPI windows_bootstrap(void *argument)
             process_id,
             PTY_CAPABILITY_RELIABLE_PROCESS_TREE_KILL |
                 PTY_CAPABILITY_CONPTY));
-    windows_free_options(&bootstrap->options);
+    pty_windows_free_options(&bootstrap->options);
     free(bootstrap);
     pty_session_release(session);
     return 0;
@@ -976,8 +964,8 @@ FFI_PLUGIN_EXPORT int32_t pty_session_start(const PtySpawnOptions *options,
     session->free_function = windows_free_session;
     PtyWindowsBootstrap *bootstrap = calloc(1, sizeof(*bootstrap));
     if (bootstrap == NULL ||
-        !windows_clone_options(options, &bootstrap->options, out_error)) {
-        if (bootstrap != NULL) windows_free_options(&bootstrap->options);
+        !pty_windows_clone_options(options, &bootstrap->options, out_error)) {
+        if (bootstrap != NULL) pty_windows_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
         return 0;
@@ -988,7 +976,7 @@ FFI_PLUGIN_EXPORT int32_t pty_session_start(const PtySpawnOptions *options,
     if (thread == NULL) {
         const DWORD thread_error = GetLastError();
         pty_session_release(session);
-        windows_free_options(&bootstrap->options);
+        pty_windows_free_options(&bootstrap->options);
         free(bootstrap);
         pty_session_release(session);
         pty_error_set(out_error,
