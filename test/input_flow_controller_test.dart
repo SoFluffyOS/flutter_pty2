@@ -77,6 +77,58 @@ void main() {
     await Future.wait([first, second]);
   });
 
+  test('limits admitted asynchronous writes to the pending byte window',
+      () async {
+    final requests = <int>[];
+    final input = InputFlowController(
+      maxChunkSize: 2,
+      maxPendingBytes: 4,
+      nativeTryWrite: (requestId, _) {
+        requests.add(requestId);
+        return PtyWriteResult.accepted;
+      },
+    );
+
+    final first = input.write(Uint8List.fromList([1, 2, 3, 4]));
+    final second = input.write(Uint8List.fromList([5, 6]));
+    final flush = input.flush();
+
+    expect(requests, [1, 2]);
+    input.handleWriteComplete(1);
+    expect(requests, [1, 2]);
+    input.handleWriteComplete(2);
+    expect(requests, [1, 2, 3]);
+
+    var flushed = false;
+    flush.then((_) => flushed = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(flushed, isFalse);
+
+    input.handleWriteComplete(3);
+    await Future.wait([first, second, flush]);
+  });
+
+  test('fails writes waiting for Dart-side admission when closed', () async {
+    final input = InputFlowController(
+      maxPendingBytes: 2,
+      nativeTryWrite: (_, __) => PtyWriteResult.accepted,
+    );
+    final first = input.write(Uint8List.fromList([1, 2]));
+    final second = input.write(Uint8List.fromList([3, 4]));
+    final firstExpectation = expectLater(
+      first,
+      throwsA(isA<PtyClosedException>()),
+    );
+    final secondExpectation = expectLater(
+      second,
+      throwsA(isA<PtyClosedException>()),
+    );
+
+    input.closeWithError(const PtyClosedException());
+
+    await Future.wait([firstExpectation, secondExpectation]);
+  });
+
   test('snapshots data before retrying after native backpressure', () async {
     final accepted = <Uint8List>[];
     var backpressured = true;

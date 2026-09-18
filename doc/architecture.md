@@ -91,11 +91,13 @@ trailing PTY bytes remain observable during the exit/drain interval.
 
 ## Input flow control
 
-`PtyInput.write()` snapshots its bytes, splits large buffers into bounded
-chunks, and submits chunks in order. Native queues copy each accepted chunk
-and reports completion by request ID. A full native queue produces
-`WRITABLE` after it drains below its low-water mark, allowing Dart to resume
-without blocking the isolate.
+`PtyInput.write()` admits asynchronous buffers through the configured input
+window, snapshots each admitted buffer, splits it into bounded chunks, and
+submits chunks in order. Calls that would exceed the Dart-side admission window
+wait for an earlier write to complete. Native queues copy each accepted chunk
+and reports completion by request ID. A full native queue produces `WRITABLE`
+after it drains below its low-water mark, allowing Dart to resume without
+blocking the isolate.
 
 `tryWrite()` submits at most one native-sized request and never waits. An
 accepted request remains tracked until `WRITE_COMPLETE` or an input/session

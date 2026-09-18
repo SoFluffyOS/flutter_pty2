@@ -23,6 +23,7 @@ final class FfiPtySessionState implements NativeEventHandler {
   FfiPtySessionState({
     required this.handle,
     required this.bindings,
+    int inputBufferBytes = 1024 * 1024,
     void Function()? onAsyncError,
   }) {
     _onAsyncError = onAsyncError;
@@ -31,7 +32,10 @@ final class FfiPtySessionState implements NativeEventHandler {
       discardOutput: _discardOutput,
       onDrained: _handleOutputDrained,
     );
-    _input = InputFlowController(nativeTryWrite: _tryWrite);
+    _input = InputFlowController(
+      nativeTryWrite: _tryWrite,
+      maxPendingBytes: inputBufferBytes,
+    );
     _observeLifecycleErrors();
   }
 
@@ -223,11 +227,13 @@ final class FfiPtySession implements PtySession, Finalizable {
     required this.handle,
     required this.bindings,
     required this.port,
+    required int inputBufferBytes,
     required NativeFinalizer finalizer,
   })  : _finalizer = finalizer,
         _state = FfiPtySessionState(
           handle: handle,
           bindings: bindings,
+          inputBufferBytes: inputBufferBytes,
           onAsyncError: () => bindings.pty_session_begin_close(handle),
         );
 

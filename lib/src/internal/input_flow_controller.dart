@@ -10,10 +10,27 @@ final class InputFlowController implements PtyInput {
   InputFlowController({
     required this.nativeTryWrite,
     this.maxChunkSize = 64 * 1024,
-  });
+    this.maxPendingBytes = 1024 * 1024,
+  }) {
+    if (maxChunkSize <= 0) {
+      throw ArgumentError.value(
+        maxChunkSize,
+        'maxChunkSize',
+        'must be positive',
+      );
+    }
+    if (maxPendingBytes <= 0) {
+      throw ArgumentError.value(
+        maxPendingBytes,
+        'maxPendingBytes',
+        'must be positive',
+      );
+    }
+  }
 
   final PtyWriteResult Function(int requestId, Uint8List bytes) nativeTryWrite;
   final int maxChunkSize;
+  final int maxPendingBytes;
   Object? _owner;
   WeakReference<Object>? _ownerReference;
 
@@ -21,10 +38,12 @@ final class InputFlowController implements PtyInput {
     _ownerReference = WeakReference(owner);
   }
 
+  final Queue<_WriteRequest> _admissions = Queue<_WriteRequest>();
   final Queue<_WriteOperation> _waiting = Queue<_WriteOperation>();
   final Map<int, _PendingWrite> _inflight = <int, _PendingWrite>{};
 
   int _nextRequestId = 1;
+  int _pendingBytes = 0;
   bool _waitingForWritable = false;
   bool _closed = false;
 
@@ -34,11 +53,12 @@ final class InputFlowController implements PtyInput {
     if (data.isEmpty) return;
 
     _retainOwner();
-    final operation = _WriteOperation(Uint8List.fromList(data));
-    _waiting.addLast(operation);
-    _pump();
+    final request = _WriteRequest(data);
+    request.completion = _waitForOperation(request.admitted.future);
+    _admissions.addLast(request);
+    _pumpAdmissions();
     try {
-      await operation.completer.future;
+      await request.completion;
     } finally {
       _releaseOwnerIfIdle();
     }
@@ -55,7 +75,7 @@ final class InputFlowController implements PtyInput {
         'tryWrite accepts at most $maxChunkSize bytes',
       );
     }
-    if (_waiting.isNotEmpty || _waitingForWritable) {
+    if (_admissions.isNotEmpty || _waiting.isNotEmpty || _waitingForWritable) {
       return PtyWriteResult.backpressured;
     }
 
@@ -83,6 +103,7 @@ final class InputFlowController implements PtyInput {
   @override
   Future<void> flush() {
     final futures = <Future<void>>[
+      for (final request in _admissions) request.completion,
       for (final operation in _waiting) operation.completer.future,
       for (final pending in _inflight.values)
         if (pending.operation == null) pending.completer.future,
@@ -109,9 +130,11 @@ final class InputFlowController implements PtyInput {
         if (operation.offset >= operation.data.length &&
             operation.inflightCount == 0) {
           _waiting.removeFirst();
+          _pendingBytes -= operation.data.length;
           if (!operation.completer.isCompleted) {
             operation.completer.complete();
           }
+          _pumpAdmissions();
         }
     }
     _pump();
@@ -125,6 +148,12 @@ final class InputFlowController implements PtyInput {
   void closeWithError(Object error, [StackTrace? stackTrace]) {
     if (_closed) return;
     _closed = true;
+    for (final request in _admissions) {
+      if (!request.admitted.isCompleted) {
+        request.admitted.completeError(error, stackTrace);
+      }
+    }
+    _admissions.clear();
     for (final operation in _waiting) {
       if (!operation.completer.isCompleted) {
         operation.completer.completeError(error, stackTrace);
@@ -137,7 +166,34 @@ final class InputFlowController implements PtyInput {
     }
     _waiting.clear();
     _inflight.clear();
+    _pendingBytes = 0;
     _owner = null;
+  }
+
+  Future<void> _waitForOperation(
+    Future<_WriteOperation> admitted,
+  ) async {
+    final operation = await admitted;
+    await operation.completer.future;
+  }
+
+  void _pumpAdmissions() {
+    if (_closed) return;
+    while (_admissions.isNotEmpty) {
+      final request = _admissions.first;
+      if (!_canAdmit(request.data.length)) return;
+      _admissions.removeFirst();
+      final operation = _WriteOperation(Uint8List.fromList(request.data));
+      _pendingBytes += operation.data.length;
+      _waiting.addLast(operation);
+      request.admitted.complete(operation);
+      _pump();
+    }
+  }
+
+  bool _canAdmit(int length) {
+    if (length > maxPendingBytes) return _pendingBytes == 0;
+    return _pendingBytes <= maxPendingBytes - length;
   }
 
   void _pump() {
@@ -183,8 +239,18 @@ final class InputFlowController implements PtyInput {
   void _releaseOwnerIfIdle() {
     final owner = _owner;
     if (owner == null) return;
-    if (_waiting.isEmpty && _inflight.isEmpty) _owner = null;
+    if (_admissions.isEmpty && _waiting.isEmpty && _inflight.isEmpty) {
+      _owner = null;
+    }
   }
+}
+
+final class _WriteRequest {
+  _WriteRequest(this.data);
+
+  final Uint8List data;
+  final admitted = Completer<_WriteOperation>();
+  late final Future<void> completion;
 }
 
 final class _PendingWrite {

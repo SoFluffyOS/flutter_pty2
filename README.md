@@ -54,6 +54,9 @@ full and resumes as Dart consumes the stream. Input supports asynchronous
 child has exited and PTY output reaches EOF. Always await `close()` when the
 session is no longer needed.
 
+`inputBufferBytes` bounds both the native input queue and admitted asynchronous
+Dart writes. Concurrent writes wait in order for space in that window.
+
 ### Input and lifecycle semantics
 
 `input.write(bytes)` accepts arbitrary binary data and completes when the

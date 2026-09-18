@@ -17,7 +17,11 @@ final class PtySpawnOptions {
   final String? workingDirectory;
   final PtyEnvironment environment;
   final PtySize size;
+
+  /// Maximum native queued input and admitted Dart-side asynchronous input.
   final int inputBufferBytes;
+
+  /// Maximum native output that may be outstanding before reading pauses.
   final int outputWindowBytes;
 
   void validate() {

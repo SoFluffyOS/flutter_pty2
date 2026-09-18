@@ -104,6 +104,7 @@ final class FfiPtyDriver {
       handle: nativeSession,
       bindings: _bindings,
       port: port,
+      inputBufferBytes: options.inputBufferBytes,
       finalizer: _sessionFinalizer,
     );
     session.attach();
