@@ -70,9 +70,6 @@ if (WIN32)
     ${PTY_COMMON_SOURCES}
     ${PTY_PLATFORM_SOURCES}
   )
-  set_tests_properties(pty_windows_session_stress_test PROPERTIES
-    ENVIRONMENT "PTY_TEST_EXPECT_PSEUDO_CONSOLE_RELEASE=1"
-  )
   add_test(
     NAME pty_windows_session_close_worker_stress_test
     COMMAND $<TARGET_FILE:pty_windows_session_stress_test>

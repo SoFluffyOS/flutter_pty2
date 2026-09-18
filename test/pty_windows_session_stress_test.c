@@ -147,6 +147,13 @@ static DWORD child_process_count(DWORD parent_process_id)
     return count;
 }
 
+static int release_pseudo_console_available(void)
+{
+    const HMODULE module = GetModuleHandleW(L"kernel32.dll");
+    return module != NULL &&
+           GetProcAddress(module, "ReleasePseudoConsole") != NULL;
+}
+
 int main(void)
 {
     InitializeCriticalSection(&events.mutex);
@@ -226,6 +233,15 @@ int main(void)
     if (expected_release != NULL && strcmp(expected_release, "0") == 0) {
         assert(release_calls == 0);
         assert(close_worker_calls == (uint64_t)cycle_count);
+    }
+    if (expected_release == NULL) {
+        if (release_pseudo_console_available()) {
+            assert(release_calls == (uint64_t)cycle_count);
+            assert(close_worker_calls == 0);
+        } else {
+            assert(release_calls == 0);
+            assert(close_worker_calls == (uint64_t)cycle_count);
+        }
     }
     assert(process_handle_count() == baseline_handle_count);
     assert(process_thread_count(current_process_id) == baseline_thread_count);
