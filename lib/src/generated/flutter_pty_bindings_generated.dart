@@ -417,6 +417,12 @@ final class PtyDebugStats extends ffi.Struct {
 
   @ffi.Uint64()
   external int pseudo_console_close_calls;
+
+  @ffi.Uint64()
+  external int pseudo_console_release_calls;
+
+  @ffi.Uint64()
+  external int pseudo_console_close_worker_calls;
 }
 
 final class PtySize extends ffi.Struct {

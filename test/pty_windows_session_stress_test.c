@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <windows.h>
 #include <tlhelp32.h>
 
@@ -210,6 +211,22 @@ int main(void)
     assert(stats.pseudo_console_close_calls -
                baseline_stats.pseudo_console_close_calls ==
            (uint64_t)cycle_count);
+    const uint64_t release_calls =
+        stats.pseudo_console_release_calls -
+        baseline_stats.pseudo_console_release_calls;
+    const uint64_t close_worker_calls =
+        stats.pseudo_console_close_worker_calls -
+        baseline_stats.pseudo_console_close_worker_calls;
+    const char *expected_release =
+        getenv("PTY_TEST_EXPECT_PSEUDO_CONSOLE_RELEASE");
+    if (expected_release != NULL && strcmp(expected_release, "1") == 0) {
+        assert(release_calls == (uint64_t)cycle_count);
+        assert(close_worker_calls == 0);
+    }
+    if (expected_release != NULL && strcmp(expected_release, "0") == 0) {
+        assert(release_calls == 0);
+        assert(close_worker_calls == (uint64_t)cycle_count);
+    }
     assert(process_handle_count() == baseline_handle_count);
     assert(process_thread_count(current_process_id) == baseline_thread_count);
     assert(child_process_count(current_process_id) == baseline_child_count);

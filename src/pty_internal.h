@@ -127,6 +127,8 @@ void pty_debug_pending_write_requeued(uint64_t inflight_bytes,
 void pty_debug_pending_write_completed(uint64_t bytes);
 void pty_debug_pending_write_discarded(uint64_t bytes);
 void pty_debug_pseudo_console_close(void);
+void pty_debug_pseudo_console_release(void);
+void pty_debug_pseudo_console_close_worker(void);
 void pty_debug_get_stats(PtyDebugStats *out_stats);
 
 typedef struct PtyWriteChunk {

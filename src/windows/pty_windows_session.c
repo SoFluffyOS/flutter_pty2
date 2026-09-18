@@ -98,6 +98,12 @@ static PtyReleasePseudoConsoleFn lookup_release_pseudo_console(void)
     return release_pseudo_console;
 }
 
+static int force_pseudo_console_close_worker(void)
+{
+    const char *value = getenv("PTY_TEST_FORCE_PSEUDO_CONSOLE_CLOSE_WORKER");
+    return value != NULL && value[0] != '\0' && value[0] != '0';
+}
+
 static void windows_mark_pseudo_console_closed(PtyWindowsPlatform *platform)
 {
     EnterCriticalSection(&platform->mutex);
@@ -148,6 +154,7 @@ static void windows_release_pseudo_console_ownership(PtySession *session)
     if (release_pseudo_console != NULL) {
         const HRESULT result = release_pseudo_console(platform->pseudo_console);
         if (SUCCEEDED(result)) {
+            pty_debug_pseudo_console_release();
             platform->pseudo_console_state = PTY_PSEUDO_CONSOLE_RELEASED;
             WakeAllConditionVariable(&platform->condition);
             LeaveCriticalSection(&platform->mutex);
@@ -190,6 +197,7 @@ static DWORD WINAPI windows_pseudo_console_close_worker(void *argument)
 {
     PtySession *session = argument;
     PtyWindowsPlatform *platform = windows_platform(session);
+    pty_debug_pseudo_console_close_worker();
     if (platform != NULL && platform->pseudo_console != NULL) {
         pty_debug_pseudo_console_close();
         ClosePseudoConsole(platform->pseudo_console);
@@ -783,7 +791,9 @@ static DWORD WINAPI windows_bootstrap(void *argument)
     platform->input_write = input_write;
     platform->output_read = output_read;
     platform->pseudo_console = pseudo_console;
-    platform->release_pseudo_console = lookup_release_pseudo_console();
+    platform->release_pseudo_console = force_pseudo_console_close_worker()
+                                           ? NULL
+                                           : lookup_release_pseudo_console();
     platform->pseudo_console_state = PTY_PSEUDO_CONSOLE_OWNED;
     platform->process = process;
     platform->job = job;
