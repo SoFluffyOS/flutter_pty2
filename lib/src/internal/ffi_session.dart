@@ -49,7 +49,7 @@ final class FfiPtySessionState implements NativeEventHandler {
   bool _outputClosed = false;
   bool _outputDrained = false;
   bool _protocolFailed = false;
-  bool _asyncErrorHandled = false;
+  bool _fatalErrorHandled = false;
 
   void _observeLifecycleErrors() {
     unawaited(_spawnCompleter.future.then<void>((_) {}, onError: (_, __) {}));
@@ -150,14 +150,16 @@ final class FfiPtySessionState implements NativeEventHandler {
   }
 
   void _handleAsyncError(PtyNativeError nativeError) {
-    if (_asyncErrorHandled) return;
-    _asyncErrorHandled = true;
+    if (_fatalErrorHandled) return;
+    _fatalErrorHandled = true;
     final error = PtyIoException('PTY I/O failed', nativeError: nativeError);
     _failLifecycle(error);
     _onAsyncError?.call();
   }
 
   void _handleSpawnFailure(PtyNativeError nativeError) {
+    if (_fatalErrorHandled) return;
+    _fatalErrorHandled = true;
     final error = PtySpawnException(
       'PTY process failed to spawn',
       nativeError: nativeError,

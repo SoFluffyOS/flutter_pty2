@@ -31,6 +31,7 @@ void main() {
     );
 
     state.handleNativeEvent(const NativeSpawnFailed(nativeError));
+    state.handleNativeEvent(const NativeSpawnFailed(nativeError));
 
     await expectLater(spawned, throwsA(isA<PtySpawnException>()));
     await expectLater(processExit, throwsA(isA<PtySpawnException>()));
