@@ -871,12 +871,8 @@ FFI_PLUGIN_EXPORT void pty_session_ack_output(PtySession *session,
     PtyWindowsPlatform *platform = windows_platform(session);
     if (platform == NULL) return;
     EnterCriticalSection(&platform->mutex);
-    const uint64_t limit = session->output_window_limit;
-    if (byte_count > limit - session->output_credit) {
-        session->output_credit = limit;
-    } else {
-        session->output_credit += byte_count;
-    }
+    session->output_credit = pty_output_credit_after_ack(
+        session->output_credit, session->output_window_limit, byte_count);
     WakeAllConditionVariable(&platform->condition);
     LeaveCriticalSection(&platform->mutex);
 }

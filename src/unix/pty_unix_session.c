@@ -1016,12 +1016,8 @@ FFI_PLUGIN_EXPORT void pty_session_ack_output(PtySession *session,
     PtyUnixPlatform *platform = platform_for(session);
     if (platform == NULL) return;
     pthread_mutex_lock(&platform->mutex);
-    const uint64_t limit = session->output_window_limit;
-    if (byte_count > limit - session->output_credit) {
-        session->output_credit = limit;
-    } else {
-        session->output_credit += byte_count;
-    }
+    session->output_credit = pty_output_credit_after_ack(
+        session->output_credit, session->output_window_limit, byte_count);
     pthread_mutex_unlock(&platform->mutex);
     wake_reactor(platform);
 }

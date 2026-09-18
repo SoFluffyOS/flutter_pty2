@@ -5,6 +5,13 @@
 
 int main(void)
 {
+    assert(pty_output_credit_after_ack(8, 16, 4) == 12);
+    assert(pty_output_credit_after_ack(8, 16, 8) == 16);
+    assert(pty_output_credit_after_ack(8, 16, UINT64_MAX) == 16);
+    assert(pty_output_credit_after_ack(16, 16, 1) == 16);
+    assert(pty_output_credit_after_ack(17, 16, 1) == 16);
+    assert(pty_output_credit_after_ack(0, 0, 1) == 0);
+
     PtyDebugStats stats;
     pty_debug_get_stats(&stats);
     assert(stats.pending_write_chunks == 0);

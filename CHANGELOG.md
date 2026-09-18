@@ -64,6 +64,7 @@
 * Make native ThreadSanitizer coverage race-free and practical for CI.
 * Verify the native output credit window bounds unacknowledged PTY output.
 * Notify Windows input backpressure waiters when queued data is dequeued.
+* Keep native output credit bounded when acknowledgements race a full window.
 * Cover Windows writable notifications before queued input completes.
 * Close sessions safely when shutdown races native startup publication.
 * Publish the native platform backend atomically across startup-close races.

@@ -68,6 +68,14 @@ struct PtySession {
     PtySessionFreeFunction free_function;
 };
 
+static inline uint64_t pty_output_credit_after_ack(uint64_t credit,
+                                                   uint64_t limit,
+                                                   uint64_t byte_count)
+{
+    if (credit >= limit || byte_count > limit - credit) return limit;
+    return credit + byte_count;
+}
+
 static inline void *pty_session_platform_load(PtySession *session)
 {
     if (session == NULL) return NULL;
