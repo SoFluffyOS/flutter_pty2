@@ -133,7 +133,8 @@ static int wait_for_zero_resources(void)
         if (stats.live_sessions == 0 && stats.live_read_workers == 0 &&
             stats.live_write_workers == 0 && stats.live_wait_workers == 0 &&
             stats.live_close_workers == 0 && stats.pending_write_chunks == 0 &&
-            stats.pending_write_bytes == 0) {
+            stats.pending_write_bytes == 0 &&
+            stats.inflight_write_bytes == 0) {
             return 1;
         }
         const struct timespec delay = {.tv_sec = 0, .tv_nsec = 10000000};

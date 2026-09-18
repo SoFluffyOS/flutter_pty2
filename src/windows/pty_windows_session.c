@@ -313,7 +313,7 @@ static void windows_discard_pending_writes(PtyWindowsPlatform *platform)
     while (true) {
         PtyWriteChunk *chunk = pty_write_queue_dequeue(&platform->write_queue);
         if (chunk == NULL) break;
-        pty_write_chunk_free(chunk);
+        pty_write_queue_complete_chunk(&platform->write_queue, chunk);
     }
     platform->write_backpressured = 0;
     LeaveCriticalSection(&platform->mutex);
@@ -444,7 +444,7 @@ static DWORD WINAPI windows_writer(void *argument)
         while (!platform->stopping &&
                InterlockedCompareExchange(&session->process_exited, 0, 0) ==
                    0 &&
-               pty_write_queue_pending_bytes(&platform->write_queue) == 0) {
+               pty_write_queue_queued_bytes(&platform->write_queue) == 0) {
             SleepConditionVariableCS(&platform->condition,
                                      &platform->mutex,
                                      INFINITE);
@@ -453,7 +453,7 @@ static DWORD WINAPI windows_writer(void *argument)
         const int process_exited =
             InterlockedCompareExchange(&session->process_exited, 0, 0) != 0;
         const int queue_empty =
-            pty_write_queue_pending_bytes(&platform->write_queue) == 0;
+            pty_write_queue_queued_bytes(&platform->write_queue) == 0;
         LeaveCriticalSection(&platform->mutex);
         if (stopping || (process_exited && queue_empty)) break;
 
@@ -490,7 +490,6 @@ static DWORD WINAPI windows_writer(void *argument)
             post_session_event(
                 session,
                 pty_post_write_complete(session->event_port, chunk->request_id));
-            windows_maybe_post_writable(session);
         } else {
             PtyError error;
             pty_error_set(&error,
@@ -501,7 +500,8 @@ static DWORD WINAPI windows_writer(void *argument)
             windows_mark_input_closed(session, &error);
             windows_discard_pending_writes(platform);
         }
-        pty_write_chunk_free(chunk);
+        pty_write_queue_complete_chunk(&platform->write_queue, chunk);
+        if (succeeded) windows_maybe_post_writable(session);
         if (!succeeded) break;
     }
     windows_mark_input_closed(session, NULL);

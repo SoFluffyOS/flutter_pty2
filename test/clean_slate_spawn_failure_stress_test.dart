@@ -87,8 +87,10 @@ final class _NativeDebug {
       liveWriteWorkers: stats.live_write_workers,
       liveWaitWorkers: stats.live_wait_workers,
       liveCloseWorkers: stats.live_close_workers,
+      livePseudoConsoleWorkers: stats.live_pseudo_console_workers,
       pendingWriteChunks: stats.pending_write_chunks,
       pendingWriteBytes: stats.pending_write_bytes,
+      inflightWriteBytes: stats.inflight_write_bytes,
     );
   }
 
@@ -102,8 +104,10 @@ final class _StatsSnapshot {
     required this.liveWriteWorkers,
     required this.liveWaitWorkers,
     required this.liveCloseWorkers,
+    required this.livePseudoConsoleWorkers,
     required this.pendingWriteChunks,
     required this.pendingWriteBytes,
+    required this.inflightWriteBytes,
   });
 
   final int liveSessions;
@@ -111,8 +115,10 @@ final class _StatsSnapshot {
   final int liveWriteWorkers;
   final int liveWaitWorkers;
   final int liveCloseWorkers;
+  final int livePseudoConsoleWorkers;
   final int pendingWriteChunks;
   final int pendingWriteBytes;
+  final int inflightWriteBytes;
 
   bool sameAs(_StatsSnapshot other) {
     return liveSessions == other.liveSessions &&
@@ -120,14 +126,17 @@ final class _StatsSnapshot {
         liveWriteWorkers == other.liveWriteWorkers &&
         liveWaitWorkers == other.liveWaitWorkers &&
         liveCloseWorkers == other.liveCloseWorkers &&
+        livePseudoConsoleWorkers == other.livePseudoConsoleWorkers &&
         pendingWriteChunks == other.pendingWriteChunks &&
-        pendingWriteBytes == other.pendingWriteBytes;
+        pendingWriteBytes == other.pendingWriteBytes &&
+        inflightWriteBytes == other.inflightWriteBytes;
   }
 
   @override
   String toString() {
     return 'sessions=$liveSessions read=$liveReadWorkers '
         'write=$liveWriteWorkers wait=$liveWaitWorkers close=$liveCloseWorkers '
-        'chunks=$pendingWriteChunks bytes=$pendingWriteBytes';
+        'pseudo=$livePseudoConsoleWorkers chunks=$pendingWriteChunks '
+        'bytes=$pendingWriteBytes inflight=$inflightWriteBytes';
   }
 }

@@ -11,6 +11,7 @@ static volatile LONG64 live_close_workers;
 static volatile LONG64 live_pseudo_console_workers;
 static volatile LONG64 pending_write_chunks;
 static volatile LONG64 pending_write_bytes;
+static volatile LONG64 inflight_write_bytes;
 
 static volatile LONG64 *worker_counter(PtyDebugWorkerKind kind)
 {
@@ -49,6 +50,7 @@ static _Atomic uint64_t live_close_workers;
 static _Atomic uint64_t live_pseudo_console_workers;
 static _Atomic uint64_t pending_write_chunks;
 static _Atomic uint64_t pending_write_bytes;
+static _Atomic uint64_t inflight_write_bytes;
 
 static _Atomic uint64_t *worker_counter(PtyDebugWorkerKind kind)
 {
@@ -107,7 +109,26 @@ void pty_debug_pending_write_enqueued(uint64_t bytes)
     add_counter(&pending_write_bytes, bytes);
 }
 
-void pty_debug_pending_write_dequeued(uint64_t bytes)
+void pty_debug_pending_write_started(uint64_t bytes)
+{
+    add_counter(&pending_write_bytes, (uint64_t)-bytes);
+    add_counter(&inflight_write_bytes, bytes);
+}
+
+void pty_debug_pending_write_requeued(uint64_t inflight_bytes,
+                                      uint64_t queued_bytes)
+{
+    add_counter(&inflight_write_bytes, (uint64_t)-inflight_bytes);
+    add_counter(&pending_write_bytes, queued_bytes);
+}
+
+void pty_debug_pending_write_completed(uint64_t bytes)
+{
+    add_counter(&pending_write_chunks, (uint64_t)-1);
+    add_counter(&inflight_write_bytes, (uint64_t)-bytes);
+}
+
+void pty_debug_pending_write_discarded(uint64_t bytes)
 {
     add_counter(&pending_write_chunks, (uint64_t)-1);
     add_counter(&pending_write_bytes, (uint64_t)-bytes);
@@ -126,4 +147,5 @@ FFI_PLUGIN_EXPORT void pty_debug_get_stats(PtyDebugStats *out_stats)
         read_counter(&live_pseudo_console_workers);
     out_stats->pending_write_chunks = read_counter(&pending_write_chunks);
     out_stats->pending_write_bytes = read_counter(&pending_write_bytes);
+    out_stats->inflight_write_bytes = read_counter(&inflight_write_bytes);
 }

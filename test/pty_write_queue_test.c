@@ -16,6 +16,7 @@ int main(void)
     pty_debug_get_stats(&stats);
     assert(stats.pending_write_chunks == 0);
     assert(stats.pending_write_bytes == 0);
+    assert(stats.inflight_write_bytes == 0);
 
     PtyWriteQueue queue;
     pty_write_queue_init(&queue, 4);
@@ -39,21 +40,30 @@ int main(void)
     assert(chunk->length == sizeof(first));
     assert(chunk->offset == 0);
     assert(chunk->bytes[0] == 1);
+    assert(pty_write_queue_pending_bytes(&queue) == sizeof(first));
+    assert(pty_write_queue_queued_bytes(&queue) == 0);
+    assert(pty_write_queue_inflight_bytes(&queue) == sizeof(first));
+    pty_debug_get_stats(&stats);
+    assert(stats.pending_write_chunks == 1);
+    assert(stats.pending_write_bytes == 0);
+    assert(stats.inflight_write_bytes == sizeof(first));
     chunk->offset = 2;
     assert(pty_write_queue_requeue_front(&queue, chunk) == PTY_WRITE_ACCEPTED);
     assert(pty_write_queue_pending_bytes(&queue) == sizeof(first) - 2);
     pty_debug_get_stats(&stats);
     assert(stats.pending_write_chunks == 1);
     assert(stats.pending_write_bytes == sizeof(first) - 2);
+    assert(stats.inflight_write_bytes == 0);
 
     chunk = pty_write_queue_dequeue(&queue);
     assert(chunk != NULL);
     assert(chunk->request_id == 11);
     assert(chunk->offset == 2);
-    pty_write_chunk_free(chunk);
+    pty_write_queue_complete_chunk(&queue, chunk);
     pty_debug_get_stats(&stats);
     assert(stats.pending_write_chunks == 0);
     assert(stats.pending_write_bytes == 0);
+    assert(stats.inflight_write_bytes == 0);
 
     assert(pty_write_queue_try_enqueue(&queue, rejected, sizeof(rejected), 13) ==
            PTY_WRITE_ACCEPTED);
@@ -62,5 +72,6 @@ int main(void)
     pty_debug_get_stats(&stats);
     assert(stats.pending_write_chunks == 0);
     assert(stats.pending_write_bytes == 0);
+    assert(stats.inflight_write_bytes == 0);
     return 0;
 }

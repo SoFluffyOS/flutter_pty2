@@ -57,6 +57,7 @@ typedef struct PtyDebugStats {
     uint64_t live_pseudo_console_workers;
     uint64_t pending_write_chunks;
     uint64_t pending_write_bytes;
+    uint64_t inflight_write_bytes;
 } PtyDebugStats;
 
 typedef struct PtySize {

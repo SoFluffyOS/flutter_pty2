@@ -229,7 +229,7 @@ static void discard_pending_writes(PtyUnixPlatform *platform)
     while (true) {
         PtyWriteChunk *chunk = pty_write_queue_dequeue(&platform->write_queue);
         if (chunk == NULL) return;
-        pty_write_chunk_free(chunk);
+        pty_write_queue_complete_chunk(&platform->write_queue, chunk);
     }
 }
 
@@ -285,7 +285,8 @@ static int pty_unix_flush_write_queue(PtySession *session)
             if (result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                 if (pty_write_queue_requeue_front(&platform->write_queue,
                                                   chunk) != PTY_WRITE_ACCEPTED) {
-                    pty_write_chunk_free(chunk);
+                    pty_write_queue_complete_chunk(&platform->write_queue,
+                                                   chunk);
                     PtyError error;
                     pty_error_set_errno(&error,
                                         PTY_ERROR_IO,
@@ -298,7 +299,7 @@ static int pty_unix_flush_write_queue(PtySession *session)
                 return 1;
             }
             const int error_number = errno;
-            pty_write_chunk_free(chunk);
+            pty_write_queue_complete_chunk(&platform->write_queue, chunk);
             PtyError error;
             pty_error_set_errno(&error, PTY_ERROR_IO, error_number,
                                 "writing PTY input failed");
@@ -308,8 +309,8 @@ static int pty_unix_flush_write_queue(PtySession *session)
         post_session_event(
             session,
             pty_post_write_complete(session->event_port, chunk->request_id));
+        pty_write_queue_complete_chunk(&platform->write_queue, chunk);
         maybe_post_writable(session);
-        pty_write_chunk_free(chunk);
     }
 }
 
@@ -384,7 +385,8 @@ static void *reactor_worker(void *argument)
         const int stopping = platform->stopping;
         const int discard = platform->discard_output;
         const int output_hung_up = platform->output_hung_up;
-        const int has_writes = pty_write_queue_pending_bytes(&platform->write_queue) != 0;
+        const int has_writes =
+            pty_write_queue_queued_bytes(&platform->write_queue) != 0;
         const uint64_t credit = session->output_credit;
         const int master_fd = platform->master_fd;
         const int wake_fd = platform->wake_pipe[0];

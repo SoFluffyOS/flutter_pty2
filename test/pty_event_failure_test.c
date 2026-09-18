@@ -104,7 +104,7 @@ static int stats_are_zero(void)
     return stats.live_sessions == 0 && stats.live_read_workers == 0 &&
            stats.live_write_workers == 0 && stats.live_wait_workers == 0 &&
            stats.live_close_workers == 0 && stats.pending_write_chunks == 0 &&
-           stats.pending_write_bytes == 0;
+           stats.pending_write_bytes == 0 && stats.inflight_write_bytes == 0;
 }
 
 int main(void)

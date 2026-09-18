@@ -98,7 +98,8 @@ window wait for an earlier write to complete; callers should not mutate a
 buffer while its write future is pending. Native queues copy each accepted
 chunk and report completion by request ID. A full native queue produces
 `WRITABLE` after it drains below its low-water mark, allowing Dart to resume
-without blocking the isolate.
+without blocking the isolate. Native admission counts both queued and
+currently in-flight chunk bytes against `inputBufferBytes`.
 
 `tryWrite()` submits at most one native-sized request and never waits. An
 accepted request remains tracked until `WRITE_COMPLETE` or an input/session

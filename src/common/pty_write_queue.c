@@ -46,7 +46,8 @@ void pty_write_queue_init(PtyWriteQueue *queue, uint64_t limit)
     queue->head = NULL;
     queue->tail = NULL;
     queue->limit = limit;
-    queue->pending_bytes = 0;
+    queue->queued_bytes = 0;
+    queue->inflight_bytes = 0;
     queue->initialized = 0;
     mutex_init(&queue->mutex);
     queue->initialized = 1;
@@ -66,11 +67,11 @@ void pty_write_queue_dispose(PtyWriteQueue *queue)
     PtyWriteChunk *chunk = queue->head;
     queue->head = NULL;
     queue->tail = NULL;
-    queue->pending_bytes = 0;
+    queue->queued_bytes = 0;
     mutex_unlock(&queue->mutex);
     while (chunk != NULL) {
         PtyWriteChunk *next = chunk->next;
-        pty_debug_pending_write_dequeued(chunk->length - chunk->offset);
+        pty_debug_pending_write_discarded(chunk->length - chunk->offset);
         pty_write_chunk_free(chunk);
         chunk = next;
     }
@@ -103,9 +104,12 @@ int pty_write_queue_try_enqueue(PtyWriteQueue *queue,
     chunk->length = length;
     chunk->offset = 0;
     chunk->request_id = request_id;
+    chunk->accounted_bytes = 0;
 
     mutex_lock(&queue->mutex);
-    if (queue->pending_bytes > queue->limit - length) {
+    if (queue->queued_bytes > queue->limit ||
+        queue->inflight_bytes > queue->limit - queue->queued_bytes ||
+        length > queue->limit - queue->queued_bytes - queue->inflight_bytes) {
         mutex_unlock(&queue->mutex);
         pty_write_chunk_free(chunk);
         return PTY_WRITE_BACKPRESSURED;
@@ -116,7 +120,7 @@ int pty_write_queue_try_enqueue(PtyWriteQueue *queue,
         queue->tail->next = chunk;
     }
     queue->tail = chunk;
-    queue->pending_bytes += length;
+    queue->queued_bytes += length;
     pty_debug_pending_write_enqueued(length);
     mutex_unlock(&queue->mutex);
     return PTY_WRITE_ACCEPTED;
@@ -130,8 +134,11 @@ PtyWriteChunk *pty_write_queue_dequeue(PtyWriteQueue *queue)
     if (chunk != NULL) {
         queue->head = chunk->next;
         if (queue->head == NULL) queue->tail = NULL;
-        queue->pending_bytes -= chunk->length - chunk->offset;
-        pty_debug_pending_write_dequeued(chunk->length - chunk->offset);
+        const uint64_t remaining = chunk->length - chunk->offset;
+        queue->queued_bytes -= remaining;
+        queue->inflight_bytes += remaining;
+        chunk->accounted_bytes = remaining;
+        pty_debug_pending_write_started(remaining);
         chunk->next = NULL;
     }
     mutex_unlock(&queue->mutex);
@@ -146,25 +153,63 @@ int pty_write_queue_requeue_front(PtyWriteQueue *queue, PtyWriteChunk *chunk)
     if (chunk->offset > chunk->length) return PTY_WRITE_ERROR;
     const uint64_t remaining = chunk->length - chunk->offset;
     mutex_lock(&queue->mutex);
-    if (queue->pending_bytes > queue->limit ||
-        remaining > queue->limit - queue->pending_bytes) {
+    if (chunk->accounted_bytes < remaining ||
+        queue->inflight_bytes < chunk->accounted_bytes) {
         mutex_unlock(&queue->mutex);
         return PTY_WRITE_BACKPRESSURED;
     }
     chunk->next = queue->head;
     queue->head = chunk;
     if (queue->tail == NULL) queue->tail = chunk;
-    queue->pending_bytes += remaining;
-    pty_debug_pending_write_enqueued(remaining);
+    queue->inflight_bytes -= chunk->accounted_bytes;
+    queue->queued_bytes += remaining;
+    pty_debug_pending_write_requeued(chunk->accounted_bytes, remaining);
+    chunk->accounted_bytes = remaining;
     mutex_unlock(&queue->mutex);
     return PTY_WRITE_ACCEPTED;
+}
+
+void pty_write_queue_complete_chunk(PtyWriteQueue *queue,
+                                     PtyWriteChunk *chunk)
+{
+    if (chunk == NULL) return;
+    uint64_t accounted_bytes = chunk->accounted_bytes;
+    if (queue != NULL && queue->initialized) {
+        mutex_lock(&queue->mutex);
+        if (accounted_bytes > queue->inflight_bytes) {
+            accounted_bytes = queue->inflight_bytes;
+        }
+        queue->inflight_bytes -= accounted_bytes;
+        chunk->accounted_bytes = 0;
+        mutex_unlock(&queue->mutex);
+    }
+    pty_debug_pending_write_completed(accounted_bytes);
+    pty_write_chunk_free(chunk);
 }
 
 uint64_t pty_write_queue_pending_bytes(PtyWriteQueue *queue)
 {
     if (queue == NULL || !queue->initialized) return 0;
     mutex_lock(&queue->mutex);
-    const uint64_t pending = queue->pending_bytes;
+    const uint64_t pending = queue->queued_bytes + queue->inflight_bytes;
     mutex_unlock(&queue->mutex);
     return pending;
+}
+
+uint64_t pty_write_queue_queued_bytes(PtyWriteQueue *queue)
+{
+    if (queue == NULL || !queue->initialized) return 0;
+    mutex_lock(&queue->mutex);
+    const uint64_t queued = queue->queued_bytes;
+    mutex_unlock(&queue->mutex);
+    return queued;
+}
+
+uint64_t pty_write_queue_inflight_bytes(PtyWriteQueue *queue)
+{
+    if (queue == NULL || !queue->initialized) return 0;
+    mutex_lock(&queue->mutex);
+    const uint64_t inflight = queue->inflight_bytes;
+    mutex_unlock(&queue->mutex);
+    return inflight;
 }

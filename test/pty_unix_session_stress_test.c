@@ -257,6 +257,7 @@ int main(void)
     assert(stats.live_close_workers == 0);
     assert(stats.pending_write_chunks == 0);
     assert(stats.pending_write_bytes == 0);
+    assert(stats.inflight_write_bytes == 0);
     assert(count_open_file_descriptors() == baseline_file_descriptors);
     assert(count_child_processes() == baseline_child_processes);
 #if defined(__linux__) || defined(__APPLE__)

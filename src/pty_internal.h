@@ -121,7 +121,11 @@ void pty_debug_worker_finished(PtyDebugWorkerKind kind);
 void pty_debug_session_started(void);
 void pty_debug_session_finished(void);
 void pty_debug_pending_write_enqueued(uint64_t bytes);
-void pty_debug_pending_write_dequeued(uint64_t bytes);
+void pty_debug_pending_write_started(uint64_t bytes);
+void pty_debug_pending_write_requeued(uint64_t inflight_bytes,
+                                      uint64_t queued_bytes);
+void pty_debug_pending_write_completed(uint64_t bytes);
+void pty_debug_pending_write_discarded(uint64_t bytes);
 void pty_debug_get_stats(PtyDebugStats *out_stats);
 
 typedef struct PtyWriteChunk {
@@ -130,20 +134,22 @@ typedef struct PtyWriteChunk {
     uint64_t length;
     uint64_t offset;
     uint64_t request_id;
+    uint64_t accounted_bytes;
 } PtyWriteChunk;
 
 typedef struct PtyWriteQueue {
     /*
-     * mutex guards head, tail, and pending_bytes. limit is immutable after
-     * initialization. initialized changes only during setup and final
-     * disposal, after all queue users have stopped. A write chunk is owned by
-     * either this queue or the caller that dequeued it, never both.
+     * mutex guards head, tail, queued_bytes, and inflight_bytes. limit is
+     * immutable after initialization. initialized changes only during setup
+     * and final disposal, after all queue users have stopped. A write chunk is
+     * owned by either this queue or the caller that dequeued it, never both.
      */
     PtyMutex mutex;
     PtyWriteChunk *head;
     PtyWriteChunk *tail;
     uint64_t limit;
-    uint64_t pending_bytes;
+    uint64_t queued_bytes;
+    uint64_t inflight_bytes;
     int initialized;
 } PtyWriteQueue;
 
@@ -155,7 +161,11 @@ int pty_write_queue_try_enqueue(PtyWriteQueue *queue,
                                  uint64_t request_id);
 PtyWriteChunk *pty_write_queue_dequeue(PtyWriteQueue *queue);
 int pty_write_queue_requeue_front(PtyWriteQueue *queue, PtyWriteChunk *chunk);
+void pty_write_queue_complete_chunk(PtyWriteQueue *queue,
+                                     PtyWriteChunk *chunk);
 void pty_write_chunk_free(PtyWriteChunk *chunk);
 uint64_t pty_write_queue_pending_bytes(PtyWriteQueue *queue);
+uint64_t pty_write_queue_queued_bytes(PtyWriteQueue *queue);
+uint64_t pty_write_queue_inflight_bytes(PtyWriteQueue *queue);
 
 #endif

@@ -94,7 +94,8 @@ static int wait_for_zero_resources(void)
             stats.live_close_workers == 0 &&
             stats.live_pseudo_console_workers == 0 &&
             stats.pending_write_chunks == 0 &&
-            stats.pending_write_bytes == 0) {
+            stats.pending_write_bytes == 0 &&
+            stats.inflight_write_bytes == 0) {
             return 1;
         }
         Sleep(10);
@@ -203,6 +204,7 @@ int main(void)
     assert(stats.live_pseudo_console_workers == 0);
     assert(stats.pending_write_chunks == 0);
     assert(stats.pending_write_bytes == 0);
+    assert(stats.inflight_write_bytes == 0);
     assert(process_handle_count() == baseline_handle_count);
     assert(process_thread_count(current_process_id) == baseline_thread_count);
     assert(child_process_count(current_process_id) == baseline_child_count);
