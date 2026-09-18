@@ -110,7 +110,7 @@ final class FfiPtyDriver {
     try {
       return await session.waitForSpawn();
     } catch (_) {
-      unawaited(session.close());
+      await session.close();
       rethrow;
     }
   }

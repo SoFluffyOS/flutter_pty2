@@ -15,6 +15,7 @@
   and pending-input futures.
 * Propagate asynchronous spawn failures to all clean-slate lifecycle futures.
 * Keep repeated native spawn failures from requesting shutdown more than once.
+* Await native cleanup before reporting asynchronous spawn failures.
 * Fail closed and request native shutdown when the clean-slate event protocol is
   malformed.
 * Complete deterministic close when a malformed terminal event is received.
