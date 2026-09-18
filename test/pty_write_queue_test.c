@@ -43,6 +43,12 @@ int main(void)
     assert(pty_write_queue_pending_bytes(&queue) == sizeof(first));
     assert(pty_write_queue_queued_bytes(&queue) == 0);
     assert(pty_write_queue_inflight_bytes(&queue) == sizeof(first));
+    // The dequeued chunk still consumes the configured input window while
+    // the writer owns it, so admission must account for in-flight bytes.
+    assert(pty_write_queue_try_enqueue(&queue,
+                                       second,
+                                       sizeof(second),
+                                       12) == PTY_WRITE_BACKPRESSURED);
     pty_debug_get_stats(&stats);
     assert(stats.pending_write_chunks == 1);
     assert(stats.pending_write_bytes == 0);
