@@ -1,12 +1,6 @@
 name: native-quality
 
 on:
-  push:
-    branches: [develop, main]
-  pull_request:
-    branches: [develop, main]
-  schedule:
-    - cron: '17 2 * * *'
   workflow_dispatch:
 
 jobs:
