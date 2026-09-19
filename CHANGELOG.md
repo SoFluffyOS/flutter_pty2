@@ -1,116 +1,111 @@
-## (Unreleased)
+## 2.0.0 - 2026-09-20
 
-* Remove the legacy manual-acknowledgement API and compile only the clean-slate
-  native backend.
-* Build clean Unix and Windows native sessions as separate translation units.
-* Preserve typed native I/O failures from synchronous `tryWrite` calls.
-* Make Windows runtime, native stress, CTest, and sanitizer workflows required
-  on pull requests and main-branch pushes.
-* Preserve standard Unix PTY line discipline instead of forcing raw mode, with
-  integration coverage for Ctrl-C through `VINTR`.
-* Reset the Unix child signal mask and all catchable signal dispositions before
-  `execve`, with inherited signal-state regression coverage.
-* Export the Dart dynamic-link API symbols from Apple CocoaPods builds.
-* Export clean-slate FFI entry points from hidden-visibility Apple builds.
-* Request native shutdown when a fatal asynchronous I/O error reaches Dart.
-* Request native shutdown when a synchronous native input write fails.
-* Bound admitted asynchronous Dart input by the configured input buffer window.
-* Prevent unobserved sibling lifecycle futures from reporting duplicate errors.
-* Add the clean-slate `Pty.spawn` session API with raw-byte output, async input,
-  bounded flow control, typed errors, process lifecycle futures, signals, and
-  asynchronous idempotent close.
-* Split clean-slate Dart session orchestration and Windows spawn code into
-  focused native and Dart drivers.
-* Propagate early asynchronous native failures to spawn, process-exit, done,
-  and pending-input futures.
-* Propagate asynchronous spawn failures to all clean-slate lifecycle futures.
-* Keep repeated native spawn failures from requesting shutdown more than once.
-* Await native cleanup before reporting asynchronous spawn failures.
-* Stress repeated asynchronous spawn failures for native resource leaks.
-* Run spawn-failure resource checks in configured desktop CI integration jobs.
-* Fail closed and request native shutdown when the clean-slate event protocol is
-  malformed.
-* Complete deterministic close when a malformed terminal event is received.
-* Preserve protocol failures when buffered output is still awaiting drain.
-* Exercise Unix PTY spawning while allocator-heavy Dart isolates are active.
-* Keep native test assertions enabled in release CTest builds.
-* Publish Windows shutdown state before terminating the Job Object.
-* Suppress false Windows I/O errors while a public kill is terminating the job.
-* Kill the Unix PTY process group when post-spawn setup cleanup fails.
-* Contain Unix descendants when native session setup fails after spawning.
-* Complete inflight input futures when a later native write observes closure.
-* Preserve Unix native setup error codes when session initialization fails.
-* Treat failed native event delivery as Dart endpoint abandonment and release
-  the session owner exactly once.
-* Skip subsequent native event posts after a session has been abandoned.
-* Add an example-app Android integration harness and run it on the emulator in
-  native-quality CI.
-* Build both Android arm64-v8a and x86_64 native targets in native-quality CI.
-* Verify clean-slate Android output and input integration on an API 35 emulator.
-* Add scheduled macOS AddressSanitizer and UndefinedBehaviorSanitizer coverage.
-* Add scheduled Windows runtime, stress, and large-transfer coverage.
-* Run Dart lifecycle, randomized, and exit-drain stress on Windows.
-* Run the native-finalizer fallback test on Windows.
-* Cover fragmented binary input writes in the Windows integration suite.
-* Cover `tryWrite` and `flush` in the Windows integration suite.
-* Cover repeated ConPTY resize during active output.
-* Cover Windows close idempotency with queued input and kill during output.
-* Serialize Windows resize and kill against native session shutdown.
-* Keep the iOS native forwarder compilable under strict SDK feature macros.
-* Compile shared native sources in Apple CocoaPods and Swift Package Manager
-  builds.
-* Validate Apple public-header synchronization and podspec packaging in CI.
-* Add an iOS example-app simulator integration harness for clean-slate output
-  and input coverage.
-* Run the iOS simulator integration harness in macOS pull-request CI.
-* Guard the Unix post-fork child branch against forbidden non-async-safe calls.
-* Retain Unix session platforms across reactor startup failures and close races.
-* Preserve close-worker ownership across concurrent startup failure cleanup.
-* Document the expanded Windows scheduled verification scope.
-* Make Windows discard output natively after the Dart consumer cancels.
-* Avoid reporting normal Windows ConPTY EOF as an asynchronous I/O error.
-* Reject native writes as soon as session shutdown begins.
-* Validate terminal dimensions in the native ABI before platform-specific casts.
-* Keep PTY output available after an input-channel failure and release queued
-  native writes immediately.
-* Notify Unix input backpressure waiters when a partial write reaches the
-  writable low-water mark.
-* Make native ThreadSanitizer coverage race-free and practical for CI.
-* Verify the native output credit window bounds unacknowledged PTY output.
-* Notify Windows input backpressure waiters when queued data is dequeued.
-* Keep native output credit bounded when acknowledgements race a full window.
-* Cover Windows writable notifications before queued input completes.
-* Close sessions safely when shutdown races native startup publication.
-* Publish the native platform backend atomically across startup-close races.
-* Avoid cross-thread `errno` handoff during concurrent Unix spawns.
-* Reset inherited `SIGBUS` handlers in Unix PTY children.
-* Report Windows process-wait failures without fabricating an exit code.
-* Return typed invalid-argument errors for malformed native input writes.
-* Close Unix input permanently when a partial write cannot be requeued.
-* Drop Unix output read concurrently canceled by the Dart consumer.
-* Preserve typed working-directory errors before relative executable lookup.
-* Serialize Unix process reaping with signals and termination requests.
-* Preserve HRESULT values in Windows ConPTY spawn and resize errors.
-* Use a deterministic error code for zero-byte Windows ConPTY reads.
-* Preserve not-found classification for failures reported by Unix `execve`.
-* Add native lifecycle, transfer, exit-drain, randomized race, finalizer, and
-  platform resource-leak coverage, including scheduled 1 GiB transfers and
-  10,000 randomized operations.
-* Document clean-slate development commands, benchmarks, native architecture,
-  ownership, shutdown, and platform boundaries.
-* Report host-process CPU time and normalized utilization for idle and loaded
-  concurrency benchmarks.
-* Avoid signaling reaped Unix process IDs and make Windows termination and
-  spawn failures idempotent and typed.
-* Fall back to direct Windows process termination if Job Object termination
-  fails during asynchronous close.
-* Align the minimum Flutter SDK constraint with the Dart 3 implementation.
-* Preserve buffered Unix output when a child exits during read backpressure.
-* Add Swift Package Manager support for iOS and macOS.
-* Share native-library resolution and honor configured library overrides
-  consistently.
-* Reject malformed native event messages with extra fields and make event-pump
-  cleanup idempotent.
+This is a breaking clean-slate release. The legacy `Pty.start`, boolean
+`write`, manual `ackRead`, and `destroy` API has been removed.
+
+### Release summary
+
+* Add `Pty.spawn(PtySpawnOptions)` and `PtySession` with raw `Uint8List`
+  output, asynchronous input, automatic output credits, bounded flow control,
+  typed exceptions, POSIX signal targeting, and idempotent asynchronous close.
+* Split `processExit` from `done`; `done` completes only after the child exits
+  and all PTY output has drained.
+* Bound copied Dart input plus native queued and in-flight writes by
+  `inputBufferBytes`, including arbitrarily large `write()` calls, and preserve
+  real native `tryWrite` failures.
+* Use a Unix poll reactor with standard terminal line discipline and inherited
+  child signal reset before `execve`.
+* Use Windows ConPTY worker ownership with Job Object containment, dynamic
+  `ReleasePseudoConsole` support, and an older-Windows close-worker fallback.
+* Add lifecycle, binary-transfer, exit-drain, resize, signal, finalizer,
+  process-tree, failure, leak, stress, native CTest, sanitizer, and analyzer
+  release gates across supported platform workflows.
+
+### Migration guide
+
+#### Imports and spawning
+
+Replace the removed entry point and synchronous constructor:
+
+```dart
+// 1.x
+import 'package:flutter_pty2/flutter_pty.dart';
+
+final pty = Pty.start(
+  '/bin/bash',
+  arguments: ['-l'],
+  columns: 120,
+  rows: 40,
+);
+```
+
+with the 2.0 session API:
+
+```dart
+import 'dart:typed_data';
+
+import 'package:flutter_pty2/flutter_pty2.dart';
+
+final session = await Pty.spawn(
+  const PtySpawnOptions(
+    executable: '/bin/bash',
+    arguments: ['-l'],
+    size: PtySize(columns: 120, rows: 40),
+  ),
+);
+```
+
+#### Input and output
+
+`output` now emits raw `Uint8List` chunks. `write()` is asynchronous and no
+longer returns a boolean. Use `tryWrite()` when admission must not wait:
+
+```dart
+final bytes = Uint8List.fromList([0x03]);
+await session.input.write(bytes);
+
+switch (session.input.tryWrite(bytes)) {
+  case PtyWriteResult.accepted:
+    await session.input.flush();
+  case PtyWriteResult.backpressured:
+    await session.input.write(bytes);
+  case PtyWriteResult.closed:
+    throw const PtyClosedException();
+}
+```
+
+Remove all calls to `ackRead`; output credits are managed automatically. Do
+not mutate a buffer until its asynchronous `write()` future completes.
+
+#### Resize, signals, and shutdown
+
+```dart
+session.resize(
+  const PtySize(
+    columns: 120,
+    rows: 40,
+    pixelWidth: 960,
+    pixelHeight: 640,
+  ),
+);
+
+session.kill();
+await session.done;
+await session.close();
+```
+
+Use `sendSignal()` with `PosixSignal` and a `PosixSignalTarget` when a
+platform-supported POSIX signal is required. Replace `exitCode` with
+`processExit` for child-exit timing, or `done` when trailing PTY output must
+also be drained. Replace `destroy()` with awaited `close()`.
+
+#### Environment and terminal identity
+
+Use `PtyEnvironment.inherit()` for the current process environment,
+`PtyEnvironment.inherit(overrides: ..., remove: ...)` for changes, or
+`PtyEnvironment.replace(values)` for an explicit environment. Set
+`TERM_PROGRAM_VERSION` through an environment override when shell integration
+needs it.
 
 ## 1.0.2
 
@@ -139,15 +134,19 @@
 * Sanitize inherited terminal-emulator identity and provide a UTF-8 locale fallback.
 
 ## 0.4.2
+
 * Fix Linux compile error, thanks [@mengyanshou].
 
 ## 0.4.1
+
 * Fix compile warning, thanks [@mengyanshou].
 
 ## 0.4.0
+
 * Update to Dart3
 
 ## 0.3.1
+
 * Update deps
 
 ## 0.3.0
@@ -188,9 +187,11 @@
 ## 0.0.3
 
 * Support passing env vars
+
 ## 0.0.2
 
 * Support passing arguments
+
 ## 0.0.1
 
 * Initial release

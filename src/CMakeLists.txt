@@ -3,7 +3,7 @@
 # the plugin to fail to compile for some customers of the plugin.
 cmake_minimum_required(VERSION 3.10)
 
-project(flutter_pty2_library VERSION 1.0.2 LANGUAGES C)
+project(flutter_pty2_library VERSION 2.0.0 LANGUAGES C)
 
 find_package(Threads REQUIRED)
 

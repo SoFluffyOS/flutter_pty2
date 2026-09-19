@@ -9,9 +9,9 @@ The original package is no longer maintained, so this fork continues the package
 under a new pub package name.
 
 This package provides a Flutter FFI pseudo-terminal implementation for spawning
-and controlling terminal processes. The clean-slate session API is the planned
-2.0 API line; platform verification is tracked separately for Windows, Android,
-and iOS.
+and controlling terminal processes. Version 2.0 uses the clean-slate session
+API below; the legacy `Pty.start` API is not available. Platform verification
+is tracked separately for Windows, Android, and iOS.
 
 The package requires Dart 3 and Flutter 3.10 or newer.
 

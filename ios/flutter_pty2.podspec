@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'flutter_pty2'
-  s.version          = '1.0.2'
+  s.version          = '2.0.0'
   s.summary          = 'Flutter FFI pseudo-terminal plugin.'
   s.description      = <<-DESC
 Flutter FFI pseudo-terminal plugin for spawning and controlling terminal processes.
