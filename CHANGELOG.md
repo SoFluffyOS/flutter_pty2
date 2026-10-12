@@ -1,3 +1,22 @@
+## 3.0.0 - Unreleased
+
+### Breaking changes
+
+* Build the native library with a Dart build hook instead of Flutter's FFI
+  plugin system. The package no longer depends on Flutter and also works in
+  Dart command-line apps (`dart run`, `dart test`, `dart build cli`).
+* Require Dart 3.10 or newer (Flutter 3.38 or newer) and a C toolchain on the
+  build machine.
+* Remove the `android`, `ios`, `linux`, `macos` and `windows` plugin folders
+  and the CocoaPods and Swift Package Manager specs.
+
+### Fixes
+
+* Report the exit code on Unix when the host reaps every child process, as the
+  Dart VM does while it has `dart:io` processes running. Sessions failed with
+  "waiting for PTY process failed: No child processes" instead. Programs now
+  start under a supervisor process that reports their exit.
+
 ## 2.0.0 - 2026-09-20
 
 This is a breaking clean-slate release. The legacy `Pty.start`, boolean
