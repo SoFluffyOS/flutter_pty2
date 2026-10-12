@@ -13,11 +13,11 @@ void main() {
       final fixture = fixturePath;
       if (fixture == null || fixture.isEmpty) return;
 
-      final process = await Process.start(
-        fixture,
-        const ['exit-after-output', '37', 'fixture-sentinel'],
-        runInShell: false,
-      );
+      final process = await Process.start(fixture, const [
+        'exit-after-output',
+        '37',
+        'fixture-sentinel',
+      ], runInShell: false);
 
       final outputFuture = process.stdout.fold<List<int>>(
         <int>[],

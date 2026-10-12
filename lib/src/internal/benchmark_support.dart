@@ -6,16 +6,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:flutter_pty2/flutter_pty2.dart';
 
-const benchmarkSizes = <int>[
-  1,
-  16,
-  64,
-  1024,
-  4096,
-  16384,
-  65536,
-  1024 * 1024,
-];
+const benchmarkSizes = <int>[1, 16, 64, 1024, 4096, 16384, 65536, 1024 * 1024];
 
 int benchmarkIterations() {
   return benchmarkEnvironmentInt('PTY_BENCHMARK_ITERATIONS', fallback: 5);
@@ -51,11 +42,7 @@ int benchmarkEnvironmentInt(String name, {required int fallback}) {
 
   final value = int.tryParse(rawValue);
   if (value == null || value < 1) {
-    throw ArgumentError.value(
-      rawValue,
-      name,
-      'must be a positive integer',
-    );
+    throw ArgumentError.value(rawValue, name, 'must be a positive integer');
   }
   return value;
 }
@@ -136,11 +123,10 @@ Future<BenchmarkRun> runBenchmarkWithCpu(
   final after = readCurrentProcessCpuTime();
   final cpuUsage = switch ((before, after)) {
     (final before?, final after?) => BenchmarkCpuUsage(
-        userMicroseconds: after.userMicroseconds - before.userMicroseconds,
-        systemMicroseconds:
-            after.systemMicroseconds - before.systemMicroseconds,
-        wallMicroseconds: stopwatch.elapsedMicroseconds,
-      ),
+      userMicroseconds: after.userMicroseconds - before.userMicroseconds,
+      systemMicroseconds: after.systemMicroseconds - before.systemMicroseconds,
+      wallMicroseconds: stopwatch.elapsedMicroseconds,
+    ),
     _ => null,
   };
   return BenchmarkRun(summary, cpuUsage);
@@ -204,9 +190,11 @@ BenchmarkCpuTime? readCurrentProcessCpuTime() {
 BenchmarkCpuTime? _readPosixCpuTime() {
   final pointer = calloc<Uint8>(256);
   try {
-    final getrusage = DynamicLibrary.process().lookupFunction<
-        Int32 Function(Int32, Pointer<Uint8>),
-        int Function(int, Pointer<Uint8>)>('getrusage');
+    final getrusage = DynamicLibrary.process()
+        .lookupFunction<
+          Int32 Function(Int32, Pointer<Uint8>),
+          int Function(int, Pointer<Uint8>)
+        >('getrusage');
     if (getrusage(0, pointer) != 0) return null;
     final values = pointer.cast<Int64>();
     return BenchmarkCpuTime(
@@ -223,23 +211,27 @@ BenchmarkCpuTime? _readPosixCpuTime() {
 BenchmarkCpuTime? _readWindowsCpuTime() {
   try {
     final library = DynamicLibrary.open('kernel32.dll');
-    final getCurrentProcess = library.lookupFunction<Pointer<Void> Function(),
-        Pointer<Void> Function()>('GetCurrentProcess');
-    final getProcessTimes = library.lookupFunction<
-        Int32 Function(
-          Pointer<Void>,
-          Pointer<Uint32>,
-          Pointer<Uint32>,
-          Pointer<Uint32>,
-          Pointer<Uint32>,
-        ),
-        int Function(
-          Pointer<Void>,
-          Pointer<Uint32>,
-          Pointer<Uint32>,
-          Pointer<Uint32>,
-          Pointer<Uint32>,
-        )>('GetProcessTimes');
+    final getCurrentProcess = library
+        .lookupFunction<Pointer<Void> Function(), Pointer<Void> Function()>(
+          'GetCurrentProcess',
+        );
+    final getProcessTimes = library
+        .lookupFunction<
+          Int32 Function(
+            Pointer<Void>,
+            Pointer<Uint32>,
+            Pointer<Uint32>,
+            Pointer<Uint32>,
+            Pointer<Uint32>,
+          ),
+          int Function(
+            Pointer<Void>,
+            Pointer<Uint32>,
+            Pointer<Uint32>,
+            Pointer<Uint32>,
+            Pointer<Uint32>,
+          )
+        >('GetProcessTimes');
     final fileTimes = calloc<Uint32>(8);
     try {
       final ok = getProcessTimes(
@@ -278,7 +270,7 @@ double meanMiBPerSecond(BenchmarkSummary summary, int bytes) {
 
 final class BenchmarkSummary {
   BenchmarkSummary(this.name, List<Duration> samples)
-      : samples = List<Duration>.unmodifiable(samples) {
+    : samples = List<Duration>.unmodifiable(samples) {
     if (samples.isEmpty) {
       throw ArgumentError.value(samples, 'samples', 'must not be empty');
     }

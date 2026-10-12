@@ -13,11 +13,12 @@ void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
   final configured =
       (Platform.isLinux || Platform.isMacOS || Platform.isWindows) &&
-          library?.isNotEmpty == true;
+      library?.isNotEmpty == true;
   final skipReason = switch (configured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY on a desktop platform to run spawn-failure '
-        'stress.',
+    _ =>
+      'Set FLUTTER_PTY2_LIBRARY on a desktop platform to run spawn-failure '
+          'stress.',
   };
 
   test(
@@ -35,15 +36,11 @@ void main() {
       try {
         for (var attempt = 0; attempt < 32; attempt++) {
           await expectLater(
-            Pty.spawn(
-              PtySpawnOptions(executable: executable),
-            ),
+            Pty.spawn(PtySpawnOptions(executable: executable)),
             throwsA(isA<PtySpawnException>()),
           );
 
-          final released = await _waitFor(
-            () => debug.read().sameAs(baseline),
-          );
+          final released = await _waitFor(() => debug.read().sameAs(baseline));
           expect(
             released,
             isTrue,
@@ -59,10 +56,7 @@ void main() {
   );
 }
 
-Future<bool> _waitFor(
-  bool Function() predicate, {
-  int attempts = 20,
-}) async {
+Future<bool> _waitFor(bool Function() predicate, {int attempts = 20}) async {
   for (var attempt = 0; attempt < attempts; attempt++) {
     if (predicate()) return true;
     await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -72,8 +66,8 @@ Future<bool> _waitFor(
 
 final class _NativeDebug {
   _NativeDebug(String path)
-      : _bindings = native.FlutterPtyBindings(DynamicLibrary.open(path)),
-        _pointer = calloc<native.PtyDebugStats>();
+    : _bindings = native.FlutterPtyBindings(DynamicLibrary.open(path)),
+      _pointer = calloc<native.PtyDebugStats>();
 
   final native.FlutterPtyBindings _bindings;
   final Pointer<native.PtyDebugStats> _pointer;

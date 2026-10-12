@@ -38,6 +38,7 @@ jobs:
       - name: Verify generated FFI bindings
         run: >-
           dart run ffigen --config ffigen_v2.yaml
+          && dart format lib/src/generated
           && git diff --exit-code -- lib/src/generated/flutter_pty_bindings_generated.dart
 
       - name: Audit Unix post-fork child path

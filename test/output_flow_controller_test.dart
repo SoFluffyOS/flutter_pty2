@@ -92,28 +92,30 @@ void main() {
     await subscription.cancel();
   });
 
-  test('closeAndDiscard releases buffered output and closes the stream',
-      () async {
-    final acknowledgements = <int>[];
-    var discarded = false;
-    final controller = OutputFlowController(
-      acknowledge: acknowledgements.add,
-      discardOutput: () => discarded = true,
-    );
-    controller.addNativeOutput(Uint8List.fromList([1, 2, 3]));
+  test(
+    'closeAndDiscard releases buffered output and closes the stream',
+    () async {
+      final acknowledgements = <int>[];
+      var discarded = false;
+      final controller = OutputFlowController(
+        acknowledge: acknowledgements.add,
+        discardOutput: () => discarded = true,
+      );
+      controller.addNativeOutput(Uint8List.fromList([1, 2, 3]));
 
-    controller.closeAndDiscard();
-    final done = Completer<void>();
-    final subscription = controller.stream.listen(
-      (_) => fail('discarded output was delivered'),
-      onDone: done.complete,
-    );
-    await done.future;
+      controller.closeAndDiscard();
+      final done = Completer<void>();
+      final subscription = controller.stream.listen(
+        (_) => fail('discarded output was delivered'),
+        onDone: done.complete,
+      );
+      await done.future;
 
-    expect(acknowledgements, [3]);
-    expect(discarded, isTrue);
-    await subscription.cancel();
-  });
+      expect(acknowledgements, [3]);
+      expect(discarded, isTrue);
+      await subscription.cancel();
+    },
+  );
 
   test('closeAndDiscard disarms callbacks after native release', () async {
     final acknowledgements = <int>[];

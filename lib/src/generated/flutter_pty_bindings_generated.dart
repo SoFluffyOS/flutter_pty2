@@ -16,53 +16,54 @@ import 'dart:ffi' as ffi;
 class FlutterPtyBindings {
   /// Holds the symbol lookup function.
   final ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
-      _lookup;
+  _lookup;
 
   /// The symbols are looked up in [dynamicLibrary].
   FlutterPtyBindings(ffi.DynamicLibrary dynamicLibrary)
-      : _lookup = dynamicLibrary.lookup;
+    : _lookup = dynamicLibrary.lookup;
 
   /// The symbols are looked up with [lookup].
   FlutterPtyBindings.fromLookup(
-      ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
-          lookup)
-      : _lookup = lookup;
+    ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName) lookup,
+  ) : _lookup = lookup;
 
   int pty_session_start(
     ffi.Pointer<PtySpawnOptions> options,
     ffi.Pointer<ffi.Pointer<PtySession>> out_session,
     ffi.Pointer<PtyError> out_error,
   ) {
-    return _pty_session_start(
-      options,
-      out_session,
-      out_error,
-    );
+    return _pty_session_start(options, out_session, out_error);
   }
 
-  late final _pty_session_startPtr = _lookup<
-      ffi.NativeFunction<
+  late final _pty_session_startPtr =
+      _lookup<
+        ffi.NativeFunction<
           ffi.Int32 Function(
-              ffi.Pointer<PtySpawnOptions>,
-              ffi.Pointer<ffi.Pointer<PtySession>>,
-              ffi.Pointer<PtyError>)>>('pty_session_start');
-  late final _pty_session_start = _pty_session_startPtr.asFunction<
-      int Function(ffi.Pointer<PtySpawnOptions>,
-          ffi.Pointer<ffi.Pointer<PtySession>>, ffi.Pointer<PtyError>)>();
+            ffi.Pointer<PtySpawnOptions>,
+            ffi.Pointer<ffi.Pointer<PtySession>>,
+            ffi.Pointer<PtyError>,
+          )
+        >
+      >('pty_session_start');
+  late final _pty_session_start = _pty_session_startPtr
+      .asFunction<
+        int Function(
+          ffi.Pointer<PtySpawnOptions>,
+          ffi.Pointer<ffi.Pointer<PtySession>>,
+          ffi.Pointer<PtyError>,
+        )
+      >();
 
-  int pty_session_pid(
-    ffi.Pointer<PtySession> session,
-  ) {
-    return _pty_session_pid(
-      session,
-    );
+  int pty_session_pid(ffi.Pointer<PtySession> session) {
+    return _pty_session_pid(session);
   }
 
   late final _pty_session_pidPtr =
       _lookup<ffi.NativeFunction<ffi.Int64 Function(ffi.Pointer<PtySession>)>>(
-          'pty_session_pid');
-  late final _pty_session_pid =
-      _pty_session_pidPtr.asFunction<int Function(ffi.Pointer<PtySession>)>();
+        'pty_session_pid',
+      );
+  late final _pty_session_pid = _pty_session_pidPtr
+      .asFunction<int Function(ffi.Pointer<PtySession>)>();
 
   int pty_session_try_write(
     ffi.Pointer<PtySession> session,
@@ -80,32 +81,39 @@ class FlutterPtyBindings {
     );
   }
 
-  late final _pty_session_try_writePtr = _lookup<
-      ffi.NativeFunction<
+  late final _pty_session_try_writePtr =
+      _lookup<
+        ffi.NativeFunction<
           ffi.Int32 Function(
-              ffi.Pointer<PtySession>,
-              ffi.Uint64,
-              ffi.Pointer<ffi.Uint8>,
-              ffi.Uint64,
-              ffi.Pointer<PtyError>)>>('pty_session_try_write');
-  late final _pty_session_try_write = _pty_session_try_writePtr.asFunction<
-      int Function(ffi.Pointer<PtySession>, int, ffi.Pointer<ffi.Uint8>, int,
-          ffi.Pointer<PtyError>)>();
+            ffi.Pointer<PtySession>,
+            ffi.Uint64,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.Uint64,
+            ffi.Pointer<PtyError>,
+          )
+        >
+      >('pty_session_try_write');
+  late final _pty_session_try_write = _pty_session_try_writePtr
+      .asFunction<
+        int Function(
+          ffi.Pointer<PtySession>,
+          int,
+          ffi.Pointer<ffi.Uint8>,
+          int,
+          ffi.Pointer<PtyError>,
+        )
+      >();
 
-  void pty_session_ack_output(
-    ffi.Pointer<PtySession> session,
-    int byte_count,
-  ) {
-    return _pty_session_ack_output(
-      session,
-      byte_count,
-    );
+  void pty_session_ack_output(ffi.Pointer<PtySession> session, int byte_count) {
+    return _pty_session_ack_output(session, byte_count);
   }
 
-  late final _pty_session_ack_outputPtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Void Function(
-              ffi.Pointer<PtySession>, ffi.Uint64)>>('pty_session_ack_output');
+  late final _pty_session_ack_outputPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<PtySession>, ffi.Uint64)
+        >
+      >('pty_session_ack_output');
   late final _pty_session_ack_output = _pty_session_ack_outputPtr
       .asFunction<void Function(ffi.Pointer<PtySession>, int)>();
 
@@ -114,36 +122,41 @@ class FlutterPtyBindings {
     PtySize size,
     ffi.Pointer<PtyError> out_error,
   ) {
-    return _pty_session_resize(
-      session,
-      size,
-      out_error,
-    );
+    return _pty_session_resize(session, size, out_error);
   }
 
-  late final _pty_session_resizePtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Int32 Function(ffi.Pointer<PtySession>, PtySize,
-              ffi.Pointer<PtyError>)>>('pty_session_resize');
-  late final _pty_session_resize = _pty_session_resizePtr.asFunction<
-      int Function(ffi.Pointer<PtySession>, PtySize, ffi.Pointer<PtyError>)>();
+  late final _pty_session_resizePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int32 Function(
+            ffi.Pointer<PtySession>,
+            PtySize,
+            ffi.Pointer<PtyError>,
+          )
+        >
+      >('pty_session_resize');
+  late final _pty_session_resize = _pty_session_resizePtr
+      .asFunction<
+        int Function(ffi.Pointer<PtySession>, PtySize, ffi.Pointer<PtyError>)
+      >();
 
   int pty_session_kill(
     ffi.Pointer<PtySession> session,
     ffi.Pointer<PtyError> out_error,
   ) {
-    return _pty_session_kill(
-      session,
-      out_error,
-    );
+    return _pty_session_kill(session, out_error);
   }
 
-  late final _pty_session_killPtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Int32 Function(ffi.Pointer<PtySession>,
-              ffi.Pointer<PtyError>)>>('pty_session_kill');
-  late final _pty_session_kill = _pty_session_killPtr.asFunction<
-      int Function(ffi.Pointer<PtySession>, ffi.Pointer<PtyError>)>();
+  late final _pty_session_killPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int32 Function(ffi.Pointer<PtySession>, ffi.Pointer<PtyError>)
+        >
+      >('pty_session_kill');
+  late final _pty_session_kill = _pty_session_killPtr
+      .asFunction<
+        int Function(ffi.Pointer<PtySession>, ffi.Pointer<PtyError>)
+      >();
 
   int pty_session_send_signal(
     ffi.Pointer<PtySession> session,
@@ -151,104 +164,92 @@ class FlutterPtyBindings {
     int target,
     ffi.Pointer<PtyError> out_error,
   ) {
-    return _pty_session_send_signal(
-      session,
-      signal_number,
-      target,
-      out_error,
-    );
+    return _pty_session_send_signal(session, signal_number, target, out_error);
   }
 
-  late final _pty_session_send_signalPtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Int32 Function(ffi.Pointer<PtySession>, ffi.Int32, ffi.Int32,
-              ffi.Pointer<PtyError>)>>('pty_session_send_signal');
-  late final _pty_session_send_signal = _pty_session_send_signalPtr.asFunction<
-      int Function(ffi.Pointer<PtySession>, int, int, ffi.Pointer<PtyError>)>();
+  late final _pty_session_send_signalPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int32 Function(
+            ffi.Pointer<PtySession>,
+            ffi.Int32,
+            ffi.Int32,
+            ffi.Pointer<PtyError>,
+          )
+        >
+      >('pty_session_send_signal');
+  late final _pty_session_send_signal = _pty_session_send_signalPtr
+      .asFunction<
+        int Function(ffi.Pointer<PtySession>, int, int, ffi.Pointer<PtyError>)
+      >();
 
-  void pty_session_discard_output(
-    ffi.Pointer<PtySession> session,
-  ) {
-    return _pty_session_discard_output(
-      session,
-    );
+  void pty_session_discard_output(ffi.Pointer<PtySession> session) {
+    return _pty_session_discard_output(session);
   }
 
   late final _pty_session_discard_outputPtr =
       _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<PtySession>)>>(
-          'pty_session_discard_output');
+        'pty_session_discard_output',
+      );
   late final _pty_session_discard_output = _pty_session_discard_outputPtr
       .asFunction<void Function(ffi.Pointer<PtySession>)>();
 
-  void pty_session_begin_close(
-    ffi.Pointer<PtySession> session,
-  ) {
-    return _pty_session_begin_close(
-      session,
-    );
+  void pty_session_begin_close(ffi.Pointer<PtySession> session) {
+    return _pty_session_begin_close(session);
   }
 
   late final _pty_session_begin_closePtr =
       _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<PtySession>)>>(
-          'pty_session_begin_close');
+        'pty_session_begin_close',
+      );
   late final _pty_session_begin_close = _pty_session_begin_closePtr
       .asFunction<void Function(ffi.Pointer<PtySession>)>();
 
-  void pty_session_release(
-    ffi.Pointer<PtySession> session,
-  ) {
-    return _pty_session_release(
-      session,
-    );
+  void pty_session_release(ffi.Pointer<PtySession> session) {
+    return _pty_session_release(session);
   }
 
   late final _pty_session_releasePtr =
       _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<PtySession>)>>(
-          'pty_session_release');
+        'pty_session_release',
+      );
   late final _pty_session_release = _pty_session_releasePtr
       .asFunction<void Function(ffi.Pointer<PtySession>)>();
 
-  void pty_session_abandon(
-    ffi.Pointer<ffi.Void> session,
-  ) {
-    return _pty_session_abandon(
-      session,
-    );
+  void pty_session_abandon(ffi.Pointer<ffi.Void> session) {
+    return _pty_session_abandon(session);
   }
 
   late final _pty_session_abandonPtr =
       _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-          'pty_session_abandon');
+        'pty_session_abandon',
+      );
   late final _pty_session_abandon = _pty_session_abandonPtr
       .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
 
-  void pty_debug_get_stats(
-    ffi.Pointer<PtyDebugStats> out_stats,
-  ) {
-    return _pty_debug_get_stats(
-      out_stats,
-    );
+  void pty_debug_get_stats(ffi.Pointer<PtyDebugStats> out_stats) {
+    return _pty_debug_get_stats(out_stats);
   }
 
-  late final _pty_debug_get_statsPtr = _lookup<
-          ffi.NativeFunction<ffi.Void Function(ffi.Pointer<PtyDebugStats>)>>(
-      'pty_debug_get_stats');
+  late final _pty_debug_get_statsPtr =
+      _lookup<
+        ffi.NativeFunction<ffi.Void Function(ffi.Pointer<PtyDebugStats>)>
+      >('pty_debug_get_stats');
   late final _pty_debug_get_stats = _pty_debug_get_statsPtr
       .asFunction<void Function(ffi.Pointer<PtyDebugStats>)>();
 
-  int Dart_InitializeApiDL(
-    ffi.Pointer<ffi.Void> data,
-  ) {
-    return _Dart_InitializeApiDL(
-      data,
-    );
+  int Dart_InitializeApiDL(ffi.Pointer<ffi.Void> data) {
+    return _Dart_InitializeApiDL(data);
   }
 
   late final _Dart_InitializeApiDLPtr =
       _lookup<ffi.NativeFunction<ffi.IntPtr Function(ffi.Pointer<ffi.Void>)>>(
-          'Dart_InitializeApiDL');
-  late final _Dart_InitializeApiDL = _Dart_InitializeApiDLPtr.asFunction<
-      int Function(ffi.Pointer<ffi.Void>)>();
+        'Dart_InitializeApiDL',
+      );
+  late final _Dart_InitializeApiDL =
+      _Dart_InitializeApiDLPtr.asFunction<
+        int Function(ffi.Pointer<ffi.Void>)
+      >();
 }
 
 /// mbstate_t is an opaque object to keep conversion state, during multibyte
@@ -264,9 +265,10 @@ final class __mbstate_t extends ffi.Union {
 
 final class __darwin_pthread_handler_rec extends ffi.Struct {
   /// Routine to call
-  external ffi
-      .Pointer<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>
-      __routine;
+  external ffi.Pointer<
+    ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>
+  >
+  __routine;
 
   /// Argument to pass
   external ffi.Pointer<ffi.Void> __arg;

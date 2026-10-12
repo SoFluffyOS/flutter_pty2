@@ -27,8 +27,11 @@ void main() {
         throwsArgumentError,
       );
       expect(
-        () => const PtySize(columns: 80, rows: 24, pixelHeight: 0x10000)
-            .validate(),
+        () => const PtySize(
+          columns: 80,
+          rows: 24,
+          pixelHeight: 0x10000,
+        ).validate(),
         throwsArgumentError,
       );
     });
@@ -41,10 +44,7 @@ void main() {
         remove: {'PATH'},
       );
 
-      final result = buildEnvironment(
-        environment,
-        caseInsensitive: false,
-      );
+      final result = buildEnvironment(environment, caseInsensitive: false);
 
       expect(result['PTY_TEST_OVERRIDE'], 'override');
       expect(result['PATH'], isNull);
@@ -57,10 +57,10 @@ void main() {
         'EMPTY': '',
       });
 
-      expect(
-        buildEnvironment(environment, caseInsensitive: true),
-        {'PATH': 'override', 'EMPTY': ''},
-      );
+      expect(buildEnvironment(environment, caseInsensitive: true), {
+        'PATH': 'override',
+        'EMPTY': '',
+      });
     });
 
     test('orders Windows environment entries for native conversion', () {
@@ -70,10 +70,7 @@ void main() {
         'alpha': 'first',
       });
 
-      final result = buildEnvironment(
-        environment,
-        caseInsensitive: true,
-      );
+      final result = buildEnvironment(environment, caseInsensitive: true);
 
       expect(result.keys, ['ALPHA', 'BETA', 'Z']);
     });

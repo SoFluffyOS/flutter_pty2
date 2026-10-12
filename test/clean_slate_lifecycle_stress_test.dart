@@ -13,8 +13,9 @@ void main() {
   };
   final skipReason = switch (nativeConfigured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
-        'platform to run lifecycle stress.',
+    _ =>
+      'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
+          'platform to run lifecycle stress.',
   };
 
   test(
@@ -31,10 +32,7 @@ void main() {
       };
       for (var cycle = 0; cycle < 1000; cycle++) {
         final session = await Pty.spawn(
-          PtySpawnOptions(
-            executable: child,
-            arguments: arguments,
-          ),
+          PtySpawnOptions(executable: child, arguments: arguments),
         );
         final exit = await session.done.timeout(const Duration(seconds: 5));
         expect(exit, isA<PtyExitCode>());

@@ -117,7 +117,8 @@ final class FfiPtySessionState implements NativeEventHandler {
         _input.handleWritable();
       case NativeInputClosed(:final error):
         _input.handleClosed(
-            PtyIoException('PTY input closed', nativeError: error));
+          PtyIoException('PTY input closed', nativeError: error),
+        );
       case NativeProcessExit(:final exit):
         if (_processExit != null || _processExitCompleter.isCompleted) return;
         _processExit = exit;
@@ -229,13 +230,13 @@ final class FfiPtySession implements PtySession, Finalizable {
     required this.port,
     required int inputBufferBytes,
     required NativeFinalizer finalizer,
-  })  : _finalizer = finalizer,
-        _state = FfiPtySessionState(
-          handle: handle,
-          bindings: bindings,
-          inputBufferBytes: inputBufferBytes,
-          onAsyncError: () => bindings.pty_session_begin_close(handle),
-        );
+  }) : _finalizer = finalizer,
+       _state = FfiPtySessionState(
+         handle: handle,
+         bindings: bindings,
+         inputBufferBytes: inputBufferBytes,
+         onAsyncError: () => bindings.pty_session_begin_close(handle),
+       );
 
   final Pointer<native.PtySession> handle;
   final native.FlutterPtyBindings bindings;
@@ -279,11 +280,7 @@ final class FfiPtySession implements PtySession, Finalizable {
 
   void attach() {
     _eventPump = NativeEventPump(port)..attach(_state);
-    _finalizer.attach(
-      this,
-      handle.cast(),
-      detach: _finalizerDetachToken,
-    );
+    _finalizer.attach(this, handle.cast(), detach: _finalizerDetachToken);
   }
 
   Future<PtySession> waitForSpawn() async {
@@ -307,8 +304,10 @@ final class FfiPtySession implements PtySession, Finalizable {
       final error = arena<native.PtyError>();
       final result = bindings.pty_session_resize(handle, nativeSize.ref, error);
       if (result == 0) {
-        throw PtyIoException('Resizing PTY failed',
-            nativeError: readNativeError(error.ref));
+        throw PtyIoException(
+          'Resizing PTY failed',
+          nativeError: readNativeError(error.ref),
+        );
       }
     });
   }
@@ -320,15 +319,19 @@ final class FfiPtySession implements PtySession, Finalizable {
       final error = arena<native.PtyError>();
       final result = bindings.pty_session_kill(handle, error);
       if (result == 0) {
-        throw PtyIoException('Killing PTY failed',
-            nativeError: readNativeError(error.ref));
+        throw PtyIoException(
+          'Killing PTY failed',
+          nativeError: readNativeError(error.ref),
+        );
       }
     });
   }
 
   @override
-  void sendSignal(PosixSignal signal,
-      {PosixSignalTarget target = PosixSignalTarget.foregroundProcessGroup}) {
+  void sendSignal(
+    PosixSignal signal, {
+    PosixSignalTarget target = PosixSignalTarget.foregroundProcessGroup,
+  }) {
     _ensureOpen();
     if (Platform.isWindows) {
       throw const PtyUnsupportedException(
@@ -344,8 +347,10 @@ final class FfiPtySession implements PtySession, Finalizable {
         error,
       );
       if (result == 0) {
-        throw PtyIoException('Sending POSIX signal failed',
-            nativeError: readNativeError(error.ref));
+        throw PtyIoException(
+          'Sending POSIX signal failed',
+          nativeError: readNativeError(error.ref),
+        );
       }
     });
   }

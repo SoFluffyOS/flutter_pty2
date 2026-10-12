@@ -10,8 +10,9 @@ void main() {
       (Platform.isLinux || Platform.isMacOS) && library?.isNotEmpty == true;
   final skipReason = switch (configured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY on Linux or macOS to run fork-safety '
-        'tests.',
+    _ =>
+      'Set FLUTTER_PTY2_LIBRARY on Linux or macOS to run fork-safety '
+          'tests.',
   };
 
   test(

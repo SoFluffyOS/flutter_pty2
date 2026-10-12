@@ -8,9 +8,8 @@ sealed class PtyEnvironment {
     Set<String> remove,
   }) = PtyInheritedEnvironment;
 
-  const factory PtyEnvironment.replace(
-    Map<String, String> values,
-  ) = PtyReplacedEnvironment;
+  const factory PtyEnvironment.replace(Map<String, String> values) =
+      PtyReplacedEnvironment;
 
   void validate();
 }

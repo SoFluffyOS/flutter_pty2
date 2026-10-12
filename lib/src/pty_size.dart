@@ -20,11 +20,7 @@ final class PtySize {
       );
     }
     if (rows <= 0 || rows > 0x7fff) {
-      throw ArgumentError.value(
-        rows,
-        'rows',
-        'must be between 1 and 32767',
-      );
+      throw ArgumentError.value(rows, 'rows', 'must be between 1 and 32767');
     }
     if (pixelWidth < 0 || pixelWidth > 0xffff) {
       throw ArgumentError.value(

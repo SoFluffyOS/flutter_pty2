@@ -10,12 +10,13 @@ void main() {
   final fixture = Platform.environment['PTY_TEST_CHILD'];
   final configured =
       (Platform.isLinux || Platform.isMacOS || Platform.isWindows) &&
-          library?.isNotEmpty == true &&
-          fixture?.isNotEmpty == true;
+      library?.isNotEmpty == true &&
+      fixture?.isNotEmpty == true;
   final skipReason = switch (configured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
-        'to run exit-drain stress.',
+    _ =>
+      'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
+          'to run exit-drain stress.',
   };
 
   test(

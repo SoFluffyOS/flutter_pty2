@@ -18,12 +18,13 @@ void main() {
   );
   final configured =
       (Platform.isLinux || Platform.isMacOS || Platform.isWindows) &&
-          library?.isNotEmpty == true &&
-          fixture?.isNotEmpty == true;
+      library?.isNotEmpty == true &&
+      fixture?.isNotEmpty == true;
   final skipReason = switch (configured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
-        'to run randomized stress.',
+    _ =>
+      'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
+          'to run randomized stress.',
   };
 
   test(
@@ -49,9 +50,11 @@ void main() {
         var closed = false;
         var paused = false;
         try {
-          for (var action = 0;
-              action < maxActionsPerSession && operationCount < operationLimit;
-              action++) {
+          for (
+            var action = 0;
+            action < maxActionsPerSession && operationCount < operationLimit;
+            action++
+          ) {
             operationCount++;
             try {
               switch (random.nextInt(6)) {
@@ -120,11 +123,7 @@ int _configuredPositiveInt(String name, {required int fallback}) {
 
   final value = int.tryParse(rawValue);
   if (value == null || value < 1) {
-    throw ArgumentError.value(
-      rawValue,
-      name,
-      'must be a positive integer',
-    );
+    throw ArgumentError.value(rawValue, name, 'must be a positive integer');
   }
   return value;
 }

@@ -18,8 +18,9 @@ final class FfiPtyDriver {
 
   static final instance = FfiPtyDriver._();
   static final DynamicLibrary _library = openPtyLibrary();
-  static final native.FlutterPtyBindings _bindings =
-      native.FlutterPtyBindings(_library);
+  static final native.FlutterPtyBindings _bindings = native.FlutterPtyBindings(
+    _library,
+  );
   static final NativeFinalizer _sessionFinalizer = NativeFinalizer(
     _library.lookup<NativeFunction<Void Function(Pointer<Void>)>>(
       'pty_session_abandon',
@@ -45,19 +46,22 @@ final class FfiPtyDriver {
         final executable = options.executable.toNativeUtf8(allocator: arena);
         final arguments = arena<Pointer<Char>>(options.arguments.length + 1);
         for (var index = 0; index < options.arguments.length; index++) {
-          (arguments + index).value =
-              options.arguments[index].toNativeUtf8(allocator: arena).cast();
+          (arguments + index).value = options.arguments[index]
+              .toNativeUtf8(allocator: arena)
+              .cast();
         }
         (arguments + options.arguments.length).value = nullptr;
 
         final environmentValues = environment.entries
             .map((entry) => '${entry.key}=${entry.value}')
             .toList(growable: false);
-        final environmentPointers =
-            arena<Pointer<Char>>(environmentValues.length + 1);
+        final environmentPointers = arena<Pointer<Char>>(
+          environmentValues.length + 1,
+        );
         for (var index = 0; index < environmentValues.length; index++) {
-          (environmentPointers + index).value =
-              environmentValues[index].toNativeUtf8(allocator: arena).cast();
+          (environmentPointers + index).value = environmentValues[index]
+              .toNativeUtf8(allocator: arena)
+              .cast();
         }
         (environmentPointers + environmentValues.length).value = nullptr;
 

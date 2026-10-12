@@ -44,18 +44,12 @@ void main() {
   });
 
   test('rejects malformed and unknown events', () {
-    expect(
-      () => NativeEvent.parse(<Object?>[]),
-      throwsFormatException,
-    );
-    expect(
-      () => NativeEvent.parse(<Object?>[99]),
-      throwsFormatException,
-    );
+    expect(() => NativeEvent.parse(<Object?>[]), throwsFormatException);
+    expect(() => NativeEvent.parse(<Object?>[99]), throwsFormatException);
     expect(
       () => NativeEvent.parse(<Object?>[
         3,
-        [1, 2]
+        [1, 2],
       ]),
       throwsFormatException,
     );

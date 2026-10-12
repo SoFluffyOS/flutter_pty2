@@ -54,8 +54,8 @@ enum PosixSignalTarget {
 
 extension PtyOutputTextExtension on PtySession {
   Stream<String> utf8Output({bool allowMalformed = true}) {
-    return output
-        .cast<List<int>>()
-        .transform(Utf8Decoder(allowMalformed: allowMalformed));
+    return output.cast<List<int>>().transform(
+      Utf8Decoder(allowMalformed: allowMalformed),
+    );
   }
 }
