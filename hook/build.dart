@@ -43,7 +43,12 @@ void main(List<String> arguments) async {
         OS.android => const ['-Wl,-z,max-page-size=16384'],
         _ => const [],
       },
-      std: 'c11',
+      // CMake's c_std_11 compiles as gnu11, which exposes the POSIX and BSD
+      // APIs the Unix sources use. MSVC has no GNU mode.
+      std: switch (targetOS) {
+        OS.windows => 'c11',
+        _ => 'gnu11',
+      },
     ).run(input: input, output: output);
   });
 }
