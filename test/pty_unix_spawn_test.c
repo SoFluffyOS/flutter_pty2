@@ -41,16 +41,18 @@ static void assert_spawn_failure(const PtySpawnOptions *options,
 {
     int master_fd = -1;
     int slave_fd = -1;
-    pid_t process_id = -1;
+    PtyUnixProcess process;
     PtyError error;
     assert(pty_unix_spawn(options,
                           &master_fd,
                           &slave_fd,
-                          &process_id,
+                          &process,
                           &error) == 0);
     assert(master_fd == -1);
     assert(slave_fd == -1);
-    assert(process_id == -1);
+    assert(process.process_id == -1);
+    assert(process.exit_fd == -1);
+    assert(process.release_fd == -1);
     assert(error.kind == (int32_t)expected_kind);
     assert(error.os_code == expected_code);
 }
@@ -78,19 +80,20 @@ static void assert_fd_three_is_not_inherited(void)
 
     int master_fd = -1;
     int slave_fd = -1;
-    pid_t process_id = -1;
+    PtyUnixProcess process;
     PtyError error;
     assert(pty_unix_spawn(&configured,
                           &master_fd,
                           &slave_fd,
-                          &process_id,
+                          &process,
                           &error) == 1);
-    int status = 0;
-    assert(waitpid(process_id, &status, 0) == process_id);
+    PtyUnixExit exit_report;
+    assert(pty_unix_read_exit(process.exit_fd, &exit_report) == 1);
+    pty_unix_release_process(&process);
     assert(close(master_fd) == 0);
     assert(close(slave_fd) == 0);
-    assert(WIFEXITED(status));
-    assert(WEXITSTATUS(status) == 0);
+    assert(exit_report.signaled == 0);
+    assert(exit_report.value == 0);
 
     if (original_fd >= 0) {
         assert(dup2(original_fd, status_fd) == status_fd);
@@ -98,6 +101,57 @@ static void assert_fd_three_is_not_inherited(void)
         return;
     }
     assert(close(status_fd) == 0);
+}
+
+
+/* Reads the program's exit report when it is available without blocking. */
+static int try_read_exit(const PtyUnixProcess *process, PtyUnixExit *exit_report)
+{
+    struct pollfd descriptor = {.fd = process->exit_fd, .events = POLLIN};
+    if (poll(&descriptor, 1, 0) <= 0) return 0;
+    assert(pty_unix_read_exit(process->exit_fd, exit_report) == 1);
+    return 1;
+}
+
+/*
+ * A runtime that reaps every child, as the Dart VM does while it has child
+ * processes of its own, must not take the program's exit status.
+ */
+static void assert_exit_survives_reaping_every_child(void)
+{
+    const char *arguments[] = {"-c", "sleep 0.2; exit 7"};
+    const char *environment[] = {"PATH=/usr/bin:/bin"};
+    PtySpawnOptions options = base_options("/bin/sh", arguments, 2, NULL);
+    options.environment = environment;
+    options.environment_count = 1;
+
+    int master_fd = -1;
+    int slave_fd = -1;
+    PtyUnixProcess process;
+    PtyError error;
+    assert(pty_unix_spawn(&options,
+                          &master_fd,
+                          &slave_fd,
+                          &process,
+                          &error) == 1);
+
+    PtyUnixExit exit_report = {0};
+    int exited = 0;
+    for (int attempt = 0; attempt < 200 && !exited; attempt++) {
+        while (waitpid(-1, NULL, WNOHANG) > 0) {}
+        struct pollfd descriptor = {.fd = master_fd, .events = POLLIN};
+        if (poll(&descriptor, 1, 10) > 0) {
+            char discarded[64];
+            (void)read(master_fd, discarded, sizeof(discarded));
+        }
+        exited = try_read_exit(&process, &exit_report);
+    }
+    pty_unix_release_process(&process);
+    close(master_fd);
+    close(slave_fd);
+    assert(exited);
+    assert(exit_report.signaled == 0);
+    assert(exit_report.value == 7);
 }
 
 static void assert_path_permission_failure_is_preserved(void)
@@ -182,6 +236,7 @@ int main(void)
     assert_spawn_failure(&invalid_size, PTY_ERROR_INVALID_ARGUMENT, EINVAL);
 
     assert_fd_three_is_not_inherited();
+    assert_exit_survives_reaping_every_child();
     assert_path_permission_failure_is_preserved();
     assert_exec_not_found_failure_is_preserved();
 
@@ -193,20 +248,23 @@ int main(void)
 
     int master_fd = -1;
     int slave_fd = -1;
-    pid_t process_id = -1;
+    PtyUnixProcess process;
     PtyError error;
     assert(pty_unix_spawn(&options,
                           &master_fd,
                           &slave_fd,
-                          &process_id,
+                          &process,
                           &error) == 1);
     assert(master_fd >= 0);
     assert(slave_fd >= 0);
-    assert(process_id > 0);
+    assert(process.process_id > 0);
+    assert(process.exit_fd >= 0);
+    assert(process.release_fd >= 0);
 
     char output[64] = {0};
     size_t output_length = 0;
-    int process_status = 0;
+    PtyUnixExit exit_report = {0};
+    int exited = 0;
     for (int attempt = 0; attempt < 100; attempt++) {
         struct pollfd descriptor = {.fd = master_fd, .events = POLLIN};
         const int poll_result = poll(&descriptor, 1, 20);
@@ -216,13 +274,15 @@ int main(void)
                                         sizeof(output) - output_length - 1);
             if (length > 0) output_length += (size_t)length;
         }
-        const pid_t waited = waitpid(process_id, &process_status, WNOHANG);
-        if (waited == process_id && output_length >= strlen("spawn-ok")) break;
+        if (!exited) exited = try_read_exit(&process, &exit_report);
+        if (exited && output_length >= strlen("spawn-ok")) break;
     }
+    pty_unix_release_process(&process);
     close(master_fd);
     close(slave_fd);
-    assert(WIFEXITED(process_status));
-    assert(WEXITSTATUS(process_status) == 0);
+    assert(exited);
+    assert(exit_report.signaled == 0);
+    assert(exit_report.value == 0);
     assert(output_length == strlen("spawn-ok"));
     assert(memcmp(output, "spawn-ok", output_length) == 0);
 
