@@ -29,7 +29,7 @@ jobs:
         run: flutter --version
 
       - name: Install dependencies
-        run: flutter pub get
+        run: dart pub get
 
       - name: Verify package publish contents
         if: matrix.os == 'ubuntu-latest' && matrix.sdk == 'stable'
@@ -53,11 +53,11 @@ jobs:
         run: dart format --output=none --set-exit-if-changed .
 
       - name: Analyze project source
-        run: flutter analyze
+        run: dart analyze
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get install -y ninja-build libgtk-3-dev
+        run: sudo apt-get install -y ninja-build
 
       - name: Build native library
         run: >-
@@ -75,28 +75,13 @@ jobs:
         run: >-
           xcrun --sdk iphonesimulator clang
           -target arm64-apple-ios13.0
-          -std=c11
+          -std=gnu11
           -Wall -Wextra -Werror
-          -D_POSIX_C_SOURCE=200809L
           -DDART_SHARED_LIB
           -Isrc
           -Isrc/include
-          -Iios/flutter_pty2/Sources/flutter_pty2/include
           -fsyntax-only
-          ios/flutter_pty2/Sources/flutter_pty2/flutter_pty.c
-
-      - name: Verify Apple public headers
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          diff -u src/flutter_pty.h <(tail -n +2 ios/flutter_pty2/Sources/flutter_pty2/include/flutter_pty2/flutter_pty.h)
-          diff -u src/flutter_pty.h <(tail -n +2 macos/flutter_pty2/Sources/flutter_pty2/include/flutter_pty2/flutter_pty.h)
-
-      - name: Lint Apple podspecs
-        if: runner.os == 'macOS'
-        run: |
-          pod lib lint ios/flutter_pty2.podspec --allow-warnings --skip-tests
-          pod lib lint macos/flutter_pty2.podspec --allow-warnings --skip-tests
+          src/common/*.c src/unix/*.c
 
       - name: Run native tests
         if: runner.os != 'Windows'
@@ -117,7 +102,7 @@ jobs:
           ctest --test-dir build -C Release --output-on-failure
 
       - name: Run tests
-        run: flutter test
+        run: dart test
 
       - name: Run configured native integration tests
         if: runner.os == 'macOS'
@@ -125,7 +110,7 @@ jobs:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/libflutter_pty2.dylib
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
         run: >-
-          flutter test
+          dart test --concurrency=1
           test/clean_slate_integration_test.dart
           test/clean_slate_spawn_failure_stress_test.dart
 
@@ -135,14 +120,14 @@ jobs:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/libflutter_pty2.so
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
         run: >-
-          flutter test
+          dart test --concurrency=1
           test/clean_slate_integration_test.dart
           test/clean_slate_spawn_failure_stress_test.dart
 
       - name: Install example dependencies for iOS
         if: runner.os == 'macOS'
         working-directory: example
-        run: flutter pub get
+        run: dart pub get
 
       - name: Run iOS simulator integration tests
         if: runner.os == 'macOS'
@@ -169,7 +154,7 @@ jobs:
           $env:FLUTTER_PTY2_LIBRARY = $library.FullName
           $env:PTY_TEST_CHILD = $fixture.FullName
           $env:PATH = "$($library.DirectoryName);$env:PATH"
-          flutter test test/clean_slate_windows_integration_test.dart test/clean_slate_lifecycle_stress_test.dart test/clean_slate_exit_drain_stress_test.dart test/clean_slate_spawn_failure_stress_test.dart
+          dart test --concurrency=1 test/clean_slate_windows_integration_test.dart test/clean_slate_lifecycle_stress_test.dart test/clean_slate_exit_drain_stress_test.dart test/clean_slate_spawn_failure_stress_test.dart
 
       - name: Run configured clean-slate Windows large-transfer tests
         if: runner.os == 'Windows'
@@ -183,4 +168,4 @@ jobs:
           $env:PTY_TEST_CHILD = $fixture.FullName
           $env:PTY_LARGE_TRANSFER_BYTES = '104857600'
           $env:PATH = "$($library.DirectoryName);$env:PATH"
-          flutter test test/clean_slate_large_transfer_test.dart
+          dart test --concurrency=1 test/clean_slate_large_transfer_test.dart

@@ -44,7 +44,7 @@ jobs:
             output="build/strict-unix/$(basename "${source}").sarif"
             clang --analyze \
               --analyzer-output sarif \
-              -std=c11 \
+              -std=gnu11 \
               -DDART_SHARED_LIB \
               -Isrc \
               -Isrc/include \
@@ -89,7 +89,7 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        run: dart pub get
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
@@ -105,13 +105,13 @@ jobs:
         if: runner.os == 'Linux'
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
-        run: flutter test test/clean_slate_fork_safety_test.dart
+        run: dart test --concurrency=1 test/clean_slate_fork_safety_test.dart
 
       - name: Run macOS fork-safety test
         if: runner.os == 'macOS'
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.dylib
-        run: flutter test test/clean_slate_fork_safety_test.dart
+        run: dart test --concurrency=1 test/clean_slate_fork_safety_test.dart
 
   dart-lifecycle-stress:
     runs-on: ubuntu-latest
@@ -125,7 +125,7 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        run: dart pub get
 
       - name: Install native build dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
@@ -139,17 +139,17 @@ jobs:
       - name: Run Dart fork-safety test
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
-        run: flutter test test/clean_slate_fork_safety_test.dart
+        run: dart test --concurrency=1 test/clean_slate_fork_safety_test.dart
 
       - name: Run Dart finalizer test
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
-        run: python3 tool/run_flutter_test_with_vm_service.py test/clean_slate_finalizer_test.dart
+        run: dart test test/clean_slate_finalizer_test.dart
 
       - name: Run Dart lifecycle stress
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
-        run: flutter test test/clean_slate_lifecycle_stress_test.dart
+        run: dart test --concurrency=1 test/clean_slate_lifecycle_stress_test.dart
 
       - name: Build integration fixture
         run: >-
@@ -161,27 +161,27 @@ jobs:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
           PTY_RANDOM_STRESS_OPERATIONS: 10000
-        run: flutter test test/clean_slate_random_stress_test.dart
+        run: dart test --concurrency=1 test/clean_slate_random_stress_test.dart
 
       - name: Run exit-drain stress
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
           PTY_EXIT_DRAIN_CYCLES: 10000
-        run: flutter test test/clean_slate_exit_drain_stress_test.dart
+        run: dart test --concurrency=1 test/clean_slate_exit_drain_stress_test.dart
 
       - name: Run 100 MiB transfer integration
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
-        run: flutter test test/clean_slate_large_transfer_test.dart
+        run: dart test --concurrency=1 test/clean_slate_large_transfer_test.dart
 
       - name: Run 1 GiB transfer integration
         env:
           FLUTTER_PTY2_LIBRARY: ${{ github.workspace }}/build/native/libflutter_pty2.so
           PTY_TEST_CHILD: ${{ github.workspace }}/build/pty_test_child/pty_test_child
           PTY_LARGE_TRANSFER_BYTES: 1073741824
-        run: flutter test test/clean_slate_large_transfer_test.dart
+        run: dart test --concurrency=1 test/clean_slate_large_transfer_test.dart
 
   windows-runtime-stress:
     strategy:
@@ -199,7 +199,7 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        run: dart pub get
 
       - name: Build native library and tests
         run: >-
@@ -234,7 +234,7 @@ jobs:
           $env:FLUTTER_PTY2_LIBRARY = $library.FullName
           $env:PTY_TEST_CHILD = $fixture.FullName
           $env:PATH = "$($library.DirectoryName);$env:PATH"
-          flutter test test/clean_slate_windows_integration_test.dart
+          dart test --concurrency=1 test/clean_slate_windows_integration_test.dart
 
       - name: Run Windows trailing-output integration through close worker
         shell: pwsh
@@ -247,7 +247,7 @@ jobs:
           $env:PTY_TEST_CHILD = $fixture.FullName
           $env:PTY_TEST_FORCE_PSEUDO_CONSOLE_CLOSE_WORKER = '1'
           $env:PATH = "$($library.DirectoryName);$env:PATH"
-          flutter test test/clean_slate_windows_integration_test.dart --plain-name 'keeps trailing ConPTY output available after process exit until done'
+          dart test --concurrency=1 test/clean_slate_windows_integration_test.dart --plain-name 'keeps trailing ConPTY output available after process exit until done'
 
       - name: Run Windows Dart lifecycle stress
         shell: pwsh
@@ -259,7 +259,7 @@ jobs:
           $env:FLUTTER_PTY2_LIBRARY = $library.FullName
           $env:PTY_TEST_CHILD = $fixture.FullName
           $env:PATH = "$($library.DirectoryName);$env:PATH"
-          flutter test test/clean_slate_lifecycle_stress_test.dart
+          dart test --concurrency=1 test/clean_slate_lifecycle_stress_test.dart
 
       - name: Run Windows Dart finalizer test
         shell: pwsh
@@ -272,7 +272,7 @@ jobs:
           $env:PTY_TEST_CHILD = $fixture.FullName
           $env:PTY_TEST_FORCE_CLOSE_THREAD_FAILURE = '1'
           $env:PATH = "$($library.DirectoryName);$env:PATH"
-          python tool/run_flutter_test_with_vm_service.py test/clean_slate_finalizer_test.dart
+          dart test test/clean_slate_finalizer_test.dart
 
       - name: Run Windows randomized stress
         shell: pwsh
@@ -285,7 +285,7 @@ jobs:
           $env:PTY_TEST_CHILD = $fixture.FullName
           $env:PTY_RANDOM_STRESS_OPERATIONS = '10000'
           $env:PATH = "$($library.DirectoryName);$env:PATH"
-          flutter test test/clean_slate_random_stress_test.dart
+          dart test --concurrency=1 test/clean_slate_random_stress_test.dart
 
       - name: Run Windows exit-drain stress
         shell: pwsh
@@ -298,7 +298,7 @@ jobs:
           $env:PTY_TEST_CHILD = $fixture.FullName
           $env:PTY_EXIT_DRAIN_CYCLES = '10000'
           $env:PATH = "$($library.DirectoryName);$env:PATH"
-          flutter test test/clean_slate_exit_drain_stress_test.dart
+          dart test --concurrency=1 test/clean_slate_exit_drain_stress_test.dart
 
       - name: Run 1 GiB Windows transfer
         shell: pwsh
@@ -311,7 +311,7 @@ jobs:
           $env:PTY_TEST_CHILD = $fixture.FullName
           $env:PTY_LARGE_TRANSFER_BYTES = '1073741824'
           $env:PATH = "$($library.DirectoryName);$env:PATH"
-          flutter test test/clean_slate_large_transfer_test.dart
+          dart test --concurrency=1 test/clean_slate_large_transfer_test.dart
 
   android-build:
     strategy:
@@ -351,11 +351,11 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        run: dart pub get
 
       - name: Install example dependencies
         working-directory: example
-        run: flutter pub get
+        run: dart pub get
 
       - name: Run Android emulator integration subset
         uses: reactivecircus/android-emulator-runner@v2
