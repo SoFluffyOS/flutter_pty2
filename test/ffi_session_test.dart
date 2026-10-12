@@ -10,7 +10,7 @@ import 'package:flutter_pty2/src/internal/native_event_pump.dart';
 import 'package:flutter_pty2/src/pty_exception.dart';
 import 'package:flutter_pty2/src/pty_exit.dart';
 import 'package:flutter_pty2/src/pty_input.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('fails lifecycle futures on an early spawn failure', () async {

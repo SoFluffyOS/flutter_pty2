@@ -1,4 +1,4 @@
-library flutter_pty2;
+library;
 
 export 'src/pty.dart';
 export 'src/pty_capabilities.dart';

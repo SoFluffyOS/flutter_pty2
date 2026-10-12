@@ -1,15 +1,19 @@
 import 'dart:ffi';
 import 'dart:io';
 
-DynamicLibrary openPtyLibrary() {
+import 'package:flutter_pty2/src/internal/native_symbols.dart';
+
+/// Finds a symbol of the native PTY library.
+typedef PtySymbolLookup =
+    Pointer<T> Function<T extends NativeType>(String symbolName);
+
+/// Looks up symbols in the library that `hook/build.dart` bundles with the
+/// app, or in the library at `FLUTTER_PTY2_LIBRARY` when that is set, such as
+/// a library built by CMake for the native tests.
+PtySymbolLookup openPtyLibrary() {
   final override = Platform.environment['FLUTTER_PTY2_LIBRARY'];
   if (override case final path? when path.isNotEmpty) {
-    return DynamicLibrary.open(path);
+    return DynamicLibrary.open(path).lookup;
   }
-  if (Platform.isMacOS || Platform.isIOS) return DynamicLibrary.process();
-  if (Platform.isLinux || Platform.isAndroid) {
-    return DynamicLibrary.open('libflutter_pty2.so');
-  }
-  if (Platform.isWindows) return DynamicLibrary.open('flutter_pty2.dll');
-  throw UnsupportedError('Unknown platform: ${Platform.operatingSystem}');
+  return lookupBundledSymbol;
 }

@@ -56,11 +56,11 @@ final class FfiPtySessionState implements NativeEventHandler {
   bool _fatalErrorHandled = false;
 
   void _observeLifecycleErrors() {
-    unawaited(_spawnCompleter.future.then<void>((_) {}, onError: (_, __) {}));
+    unawaited(_spawnCompleter.future.then<void>((_) {}, onError: (_, _) {}));
     unawaited(
-      _processExitCompleter.future.then<void>((_) {}, onError: (_, __) {}),
+      _processExitCompleter.future.then<void>((_) {}, onError: (_, _) {}),
     );
-    unawaited(_doneCompleter.future.then<void>((_) {}, onError: (_, __) {}));
+    unawaited(_doneCompleter.future.then<void>((_) {}, onError: (_, _) {}));
   }
 
   OutputFlowController get output => _output;

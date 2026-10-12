@@ -2,7 +2,7 @@ import 'dart:isolate';
 
 import 'package:flutter_pty2/src/internal/native_event.dart';
 import 'package:flutter_pty2/src/internal/native_event_pump.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   test(

@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_pty2/flutter_pty2.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 const _defaultTransferSize = 100 * 1024 * 1024;
 const _binaryReadyMarker = 'BINARY_READY';

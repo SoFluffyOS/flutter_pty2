@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:flutter_pty2/flutter_pty2.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];

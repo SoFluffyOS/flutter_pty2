@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_pty2/src/internal/native_event.dart';
 import 'package:flutter_pty2/src/pty_exception.dart';
 import 'package:flutter_pty2/src/pty_exit.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('parses spawned and output events', () {

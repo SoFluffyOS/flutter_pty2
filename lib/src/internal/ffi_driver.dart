@@ -17,12 +17,11 @@ final class FfiPtyDriver {
   FfiPtyDriver._();
 
   static final instance = FfiPtyDriver._();
-  static final DynamicLibrary _library = openPtyLibrary();
-  static final native.FlutterPtyBindings _bindings = native.FlutterPtyBindings(
-    _library,
-  );
+  static final PtySymbolLookup _lookup = openPtyLibrary();
+  static final native.FlutterPtyBindings _bindings =
+      native.FlutterPtyBindings.fromLookup(_lookup);
   static final NativeFinalizer _sessionFinalizer = NativeFinalizer(
-    _library.lookup<NativeFunction<Void Function(Pointer<Void>)>>(
+    _lookup<NativeFunction<Void Function(Pointer<Void>)>>(
       'pty_session_abandon',
     ),
   );

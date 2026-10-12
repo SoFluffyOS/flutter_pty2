@@ -5,7 +5,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_pty2/flutter_pty2.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 String decodeTerminalText(Iterable<int> bytes) {
   return utf8.decode(bytes.toList()).replaceAll('\r\n', '\n');

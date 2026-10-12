@@ -1,7 +1,7 @@
 import 'package:flutter_pty2/src/internal/pty_capabilities_codec.dart';
 import 'package:flutter_pty2/src/generated/flutter_pty_bindings_generated.dart'
     as native;
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('decodes Unix capability bits', () {

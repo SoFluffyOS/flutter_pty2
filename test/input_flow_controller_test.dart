@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_pty2/src/internal/input_flow_controller.dart';
 import 'package:flutter_pty2/src/pty_exception.dart';
 import 'package:flutter_pty2/src/pty_input.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('serializes chunks and resumes after native backpressure', () async {
@@ -114,7 +114,7 @@ void main() {
   test('fails writes waiting for Dart-side admission when closed', () async {
     final input = InputFlowController(
       maxPendingBytes: 2,
-      nativeTryWrite: (_, __) => PtyWriteResult.accepted,
+      nativeTryWrite: (_, _) => PtyWriteResult.accepted,
     );
     final first = input.write(Uint8List.fromList([1, 2]));
     final second = input.write(Uint8List.fromList([3, 4]));
@@ -202,7 +202,7 @@ void main() {
 
   test('closes all pending writes with the same error', () async {
     final input = InputFlowController(
-      nativeTryWrite: (_, __) => PtyWriteResult.accepted,
+      nativeTryWrite: (_, _) => PtyWriteResult.accepted,
     );
     final write = input.write(Uint8List.fromList([1]));
     input.handleClosed(const PtyClosedException());
@@ -212,7 +212,7 @@ void main() {
 
   test('handles an unobserved tryWrite completion failure', () async {
     final input = InputFlowController(
-      nativeTryWrite: (_, __) => PtyWriteResult.accepted,
+      nativeTryWrite: (_, _) => PtyWriteResult.accepted,
     );
     expect(input.tryWrite(Uint8List.fromList([1])), PtyWriteResult.accepted);
     input.handleClosed(const PtyClosedException());
@@ -223,7 +223,7 @@ void main() {
   test('remembers a closed result without retrying native writes', () async {
     var nativeCalls = 0;
     final input = InputFlowController(
-      nativeTryWrite: (_, __) {
+      nativeTryWrite: (_, _) {
         nativeCalls++;
         return PtyWriteResult.closed;
       },
@@ -240,7 +240,7 @@ void main() {
 
   test('propagates synchronous native tryWrite errors', () {
     const error = PtyIoException('native write failed');
-    final input = InputFlowController(nativeTryWrite: (_, __) => throw error);
+    final input = InputFlowController(nativeTryWrite: (_, _) => throw error);
 
     expect(() => input.tryWrite(Uint8List.fromList([1])), throwsA(same(error)));
     expect(input.tryWrite(Uint8List.fromList([2])), PtyWriteResult.closed);
@@ -251,7 +251,7 @@ void main() {
     () async {
       var nativeCalls = 0;
       final input = InputFlowController(
-        nativeTryWrite: (_, __) {
+        nativeTryWrite: (_, _) {
           nativeCalls++;
           if (nativeCalls == 1) return PtyWriteResult.accepted;
           return PtyWriteResult.closed;
@@ -269,7 +269,7 @@ void main() {
   test('tryWrite rejects buffers larger than one native request', () {
     final input = InputFlowController(
       maxChunkSize: 2,
-      nativeTryWrite: (_, __) => PtyWriteResult.accepted,
+      nativeTryWrite: (_, _) => PtyWriteResult.accepted,
     );
     expect(
       () => input.tryWrite(Uint8List.fromList([1, 2, 3])),
