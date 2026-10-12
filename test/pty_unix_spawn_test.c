@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdint.h>
 #include <limits.h>
 #include <stdio.h>
@@ -9,7 +10,12 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
+
+#if defined(__APPLE__)
+#include <libproc.h>
+#endif
 
 #include "../src/unix/pty_unix_spawn.h"
 
@@ -154,6 +160,121 @@ static void assert_exit_survives_reaping_every_child(void)
     assert(exit_report.value == 7);
 }
 
+static PtySpawnOptions shell_options(const char *script)
+{
+    static const char *arguments[2];
+    static const char *environment[] = {"PATH=/usr/bin:/bin"};
+    arguments[0] = "-c";
+    arguments[1] = script;
+    PtySpawnOptions options = base_options("/bin/sh", arguments, 2, NULL);
+    options.environment = environment;
+    options.environment_count = 1;
+    return options;
+}
+
+static double seconds_now(void)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (double)now.tv_sec + (double)now.tv_nsec / 1e9;
+}
+
+static pid_t parent_of(pid_t process_id)
+{
+#if defined(__APPLE__)
+    struct proc_bsdinfo info;
+    const int size = proc_pidinfo(process_id, PROC_PIDTBSDINFO, 0, &info,
+                                  (int)sizeof(info));
+    assert(size == (int)sizeof(info));
+    return (pid_t)info.pbi_ppid;
+#else
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%d/stat", (int)process_id);
+    FILE *file = fopen(path, "r");
+    assert(file != NULL);
+    int parent = -1;
+    assert(fscanf(file, "%*d %*s %*c %d", &parent) == 1);
+    fclose(file);
+    return (pid_t)parent;
+#endif
+}
+
+/*
+ * The supervisor must not keep the caller's stdout: a pipeline reading the
+ * caller's output would otherwise wait for the program to end.
+ */
+static void assert_supervisor_releases_caller_stdout(void)
+{
+    int output[2];
+    assert(pipe(output) == 0);
+    const pid_t caller = fork();
+    assert(caller >= 0);
+    if (caller == 0) {
+        dup2(output[1], STDOUT_FILENO);
+        close(output[0]);
+        close(output[1]);
+        const PtySpawnOptions options = shell_options("sleep 3");
+        int master_fd = -1;
+        int slave_fd = -1;
+        PtyUnixProcess process;
+        PtyError error;
+        if (pty_unix_spawn(&options, &master_fd, &slave_fd, &process,
+                           &error) != 1) {
+            _exit(1);
+        }
+        (void)!write(STDOUT_FILENO, &process.process_id,
+                     sizeof(process.process_id));
+        // Stay alive, holding the terminal, with stdout closed: only the
+        // supervisor could still hold the pipe.
+        close(STDOUT_FILENO);
+        sleep(10);
+        _exit(0);
+    }
+    close(output[1]);
+    pid_t program = -1;
+    assert(read(output[0], &program, sizeof(program)) == sizeof(program));
+    const double started = seconds_now();
+    struct pollfd descriptor = {.fd = output[0], .events = POLLIN};
+    assert(poll(&descriptor, 1, 2000) == 1);
+    char ignored;
+    assert(read(output[0], &ignored, 1) == 0);
+    assert(seconds_now() - started < 2.0);
+    close(output[0]);
+    kill(program, SIGKILL);
+    kill(caller, SIGKILL);
+    assert(waitpid(caller, NULL, 0) == caller);
+}
+
+/*
+ * Killing processes by the caller's name must not take the supervisor, or
+ * the program would lose its exit report and could no longer be stopped.
+ */
+static void assert_supervisor_survives_termination(void)
+{
+    const PtySpawnOptions options = shell_options("sleep 0.3; exit 5");
+    int master_fd = -1;
+    int slave_fd = -1;
+    PtyUnixProcess process;
+    PtyError error;
+    assert(pty_unix_spawn(&options, &master_fd, &slave_fd, &process,
+                          &error) == 1);
+    // Processes the caller starts later must not inherit the terminal.
+    assert((fcntl(master_fd, F_GETFD) & FD_CLOEXEC) != 0);
+    assert((fcntl(slave_fd, F_GETFD) & FD_CLOEXEC) != 0);
+    const pid_t supervisor = parent_of(process.process_id);
+    assert(supervisor > 1);
+    assert(kill(supervisor, SIGTERM) == 0);
+    assert(kill(supervisor, SIGHUP) == 0);
+
+    PtyUnixExit exit_report = {0};
+    assert(pty_unix_read_exit(process.exit_fd, &exit_report) == 1);
+    pty_unix_release_process(&process);
+    close(master_fd);
+    close(slave_fd);
+    assert(exit_report.signaled == 0);
+    assert(exit_report.value == 5);
+}
+
 static void assert_path_permission_failure_is_preserved(void)
 {
     char directory_template[] = "/tmp/flutter-pty-path-XXXXXX";
@@ -237,6 +358,8 @@ int main(void)
 
     assert_fd_three_is_not_inherited();
     assert_exit_survives_reaping_every_child();
+    assert_supervisor_releases_caller_stdout();
+    assert_supervisor_survives_termination();
     assert_path_permission_failure_is_preserved();
     assert_exec_not_found_failure_is_preserved();
 

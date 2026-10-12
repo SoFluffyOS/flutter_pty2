@@ -1,3 +1,8 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+// pipe2
+#define _GNU_SOURCE
+#endif
+
 #include "pty_unix_spawn.h"
 
 #include <errno.h>
@@ -22,6 +27,7 @@
 #endif
 
 #if defined(__APPLE__)
+#include <libproc.h>
 #include <util.h>
 #elif defined(__ANDROID__)
 #include <fcntl.h>
@@ -434,6 +440,84 @@ static int set_close_on_exec(int fd)
     return fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
 }
 
+/* A pipe whose ends close on exec. Linux sets the flag atomically, so a
+ * process another thread starts meanwhile cannot inherit an end. */
+static int open_cloexec_pipe(int fds[2])
+{
+#if defined(__linux__)
+    return pipe2(fds, O_CLOEXEC);
+#else
+    if (pipe(fds) != 0) return -1;
+    if (set_close_on_exec(fds[0]) == 0 && set_close_on_exec(fds[1]) == 0) {
+        return 0;
+    }
+    const int error_number = errno;
+    close(fds[0]);
+    close(fds[1]);
+    errno = error_number;
+    return -1;
+#endif
+}
+
+/* Room to list this process's open descriptors after fork. */
+typedef struct {
+    void *buffer;
+    int size;
+} PtyFdList;
+
+static PtyFdList fd_list_prepare(void)
+{
+    PtyFdList list = {NULL, 0};
+#if defined(__APPLE__)
+    const int needed = proc_pidinfo(getpid(), PROC_PIDLISTFDS, 0, NULL, 0);
+    if (needed <= 0) return list;
+    // Leave room for descriptors other threads open before the fork.
+    const int size = needed * 2 + 64 * (int)PROC_PIDLISTFD_SIZE;
+    list.buffer = malloc((size_t)size);
+    if (list.buffer != NULL) list.size = size;
+#endif
+    return list;
+}
+
+/*
+ * Closes every open descriptor above stderr except those in keep, from a
+ * list of the open ones, and returns 1; returns 0 when no complete list is
+ * available. Without it, closing every possible number costs a million
+ * close calls under a high descriptor limit. Async-signal-safe:
+ * proc_pidinfo is a plain system call.
+ */
+static int close_listed_fds_except(PtyFdList list,
+                                   const int *keep,
+                                   int keep_count)
+{
+#if defined(__APPLE__)
+    if (list.buffer == NULL) return 0;
+    const int filled = proc_pidinfo(getpid(),
+                                    PROC_PIDLISTFDS,
+                                    0,
+                                    list.buffer,
+                                    list.size);
+    if (filled <= 0 || filled >= list.size) return 0;
+    const struct proc_fdinfo *entries = list.buffer;
+    const int count = filled / (int)PROC_PIDLISTFD_SIZE;
+    for (int index = 0; index < count; index++) {
+        const int fd = entries[index].proc_fd;
+        if (fd <= STDERR_FILENO) continue;
+        int kept = 0;
+        for (int keep_index = 0; keep_index < keep_count; keep_index++) {
+            if (keep[keep_index] == fd) kept = 1;
+        }
+        if (!kept) close(fd);
+    }
+    return 1;
+#else
+    (void)list;
+    (void)keep;
+    (void)keep_count;
+    return 0;
+#endif
+}
+
 static int max_open_fd(void)
 {
     long value = sysconf(_SC_OPEN_MAX);
@@ -589,6 +673,37 @@ void pty_unix_release_process(PtyUnixProcess *process)
     if (process->exit_fd >= 0) close(process->exit_fd);
     process->release_fd = -1;
     process->exit_fd = -1;
+}
+
+/*
+ * Detaches the supervisor from the caller: its stdio moves to /dev/null and
+ * its working directory to /, so a pipe the caller writes to sees end of
+ * file once the caller exits and no volume stays busy. It ignores the
+ * signals a terminal, or killing the caller's processes by name, would
+ * send, so the program never loses its supervisor; a closed exit pipe
+ * fails the write instead of killing it. Async-signal-safe.
+ */
+static void supervisor_detach(void)
+{
+    const int null_fd = open("/dev/null", O_RDWR);
+    if (null_fd >= 0) {
+        dup2(null_fd, STDIN_FILENO);
+        dup2(null_fd, STDOUT_FILENO);
+        dup2(null_fd, STDERR_FILENO);
+        if (null_fd > STDERR_FILENO) close(null_fd);
+    }
+    if (chdir("/") != 0) {
+        // Staying in the caller's directory only keeps it busy.
+    }
+    struct sigaction ignore = {
+        .sa_handler = SIG_IGN,
+    };
+    sigemptyset(&ignore.sa_mask);
+    const int ignored[] = {SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGPIPE};
+    for (size_t index = 0; index < sizeof(ignored) / sizeof(ignored[0]);
+         index++) {
+        sigaction(ignored[index], &ignore, NULL);
+    }
 }
 
 /*
@@ -752,6 +867,16 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     int descriptor_error = 0;
     master = move_fd_above(master, PTY_CHILD_STATUS_FD + 1, &descriptor_error);
     slave = move_fd_above(slave, PTY_CHILD_STATUS_FD + 1, &descriptor_error);
+    // openpty does not set close-on-exec, so every process the host starts
+    // would inherit the terminal and keep it from hanging up.
+    if (master >= 0 && slave >= 0 &&
+        (set_close_on_exec(master) != 0 || set_close_on_exec(slave) != 0)) {
+        descriptor_error = errno;
+        close(master);
+        close(slave);
+        master = -1;
+        slave = -1;
+    }
     if (master < 0 || slave < 0) {
         const int error_number = descriptor_error == 0 ? EIO : descriptor_error;
         if (master >= 0) close(master);
@@ -765,7 +890,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     }
 
     int status_pipe[2] = {-1, -1};
-    if (pipe(status_pipe) != 0) {
+    if (open_cloexec_pipe(status_pipe) != 0) {
         const int error_number = errno;
         cleanup_failed_child(-1, master);
         close(slave);
@@ -825,7 +950,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     close(status_pipe[1]);
 
     int exit_pipe[2] = {-1, -1};
-    if (pipe(exit_pipe) != 0) {
+    if (open_cloexec_pipe(exit_pipe) != 0) {
         const int error_number = errno;
         close(status_pipe[0]);
         close(status_fd);
@@ -865,7 +990,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     }
 
     int release_pipe[2] = {-1, -1};
-    if (pipe(release_pipe) != 0) {
+    if (open_cloexec_pipe(release_pipe) != 0) {
         const int error_number = errno;
         close(exit_pipe[0]);
         close(exit_pipe[1]);
@@ -939,7 +1064,9 @@ int pty_unix_spawn(const PtySpawnOptions *options,
      * and this process only ever waits for the launcher. The supervisor waits
      * for the program and reports its pid and wait status on exit_pipe.
      */
+    PtyFdList open_fds = fd_list_prepare();
     const pid_t child = fork();
+    if (child != 0) free(open_fds.buffer);
     if (child < 0) {
         const int error_number = errno;
         close(release_pipe[0]);
@@ -975,9 +1102,18 @@ int pty_unix_spawn(const PtySpawnOptions *options,
             exit_pipe[1],
             release_pipe[0],
         };
-        close_fds_except(kept_fds,
-                         (int)(sizeof(kept_fds) / sizeof(kept_fds[0])),
-                         maximum_fd);
+        const int kept_count = (int)(sizeof(kept_fds) / sizeof(kept_fds[0]));
+        if (!close_listed_fds_except(open_fds, kept_fds, kept_count)) {
+            close_fds_except(kept_fds, kept_count, maximum_fd);
+        }
+        // Only the kept descriptors are open now, so the program need not
+        // close every possible number again.
+        int program_fd_limit = 0;
+        for (int index = 0; index < kept_count; index++) {
+            if (kept_fds[index] >= program_fd_limit) {
+                program_fd_limit = kept_fds[index] + 1;
+            }
+        }
         const pid_t supervisor = fork();
         if (supervisor < 0) {
             child_report_error(status_fd, PTY_CHILD_STAGE_SUPERVISOR, errno);
@@ -999,6 +1135,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
         if (program > 0) {
             close(slave);
             close(status_fd);
+            supervisor_detach();
             supervise_program(program, exit_pipe[1], release_pipe[0]);
         }
 
@@ -1019,7 +1156,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
             _exit(126);
         }
         if (slave > STDERR_FILENO && slave != status_fd) close(slave);
-        close_extra_fds(status_fd, maximum_fd);
+        close_extra_fds(status_fd, program_fd_limit);
         if (options->working_directory != NULL &&
             options->working_directory[0] != '\0' &&
             chdir(options->working_directory) != 0) {

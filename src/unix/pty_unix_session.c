@@ -499,6 +499,8 @@ static void release_process(PtyUnixPlatform *platform)
     pty_unix_release_process(&process);
 }
 
+static void stop_process(PtySession *session);
+
 static void *waiter_worker(void *argument)
 {
     PtySession *session = argument;
@@ -509,6 +511,9 @@ static void *waiter_worker(void *argument)
     pthread_mutex_unlock(&platform->mutex);
     const int read_result = pty_unix_read_exit(exit_fd, &exit);
     const int read_errno = errno;
+    // A supervisor that died before reporting leaves the program running
+    // without one; stop it while its pid is still known to be ours.
+    if (read_result != 1) stop_process(session);
 
     pthread_mutex_lock(&platform->mutex);
     atomic_store_explicit(&session->process_exited, 1, memory_order_release);
