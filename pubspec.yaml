@@ -1,6 +1,6 @@
 name: flutter_pty2
 description: Dart FFI pseudo-terminal (PTY) for spawning and controlling terminal processes, in Flutter apps and Dart command-line apps.
-version: 3.0.0-dev.1
+version: 3.0.0
 homepage: https://github.com/SoFluffyOS/flutter_pty2
 repository: https://github.com/SoFluffyOS/flutter_pty2
 issue_tracker: https://github.com/SoFluffyOS/flutter_pty2/issues
