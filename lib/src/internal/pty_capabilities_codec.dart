@@ -20,10 +20,7 @@ PtyCapabilities decodePtyCapabilities(int bits) {
       bits,
       native.PtyCapability.PTY_CAPABILITY_RELIABLE_PROCESS_TREE_KILL,
     ),
-    conPty: _hasCapability(
-      bits,
-      native.PtyCapability.PTY_CAPABILITY_CONPTY,
-    ),
+    conPty: _hasCapability(bits, native.PtyCapability.PTY_CAPABILITY_CONPTY),
   );
 }
 

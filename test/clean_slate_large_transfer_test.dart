@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_pty2/flutter_pty2.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 const _defaultTransferSize = 100 * 1024 * 1024;
 const _binaryReadyMarker = 'BINARY_READY';
@@ -49,12 +49,13 @@ void main() {
   final transferSize = _configuredTransferSize();
   final configured =
       (Platform.isLinux || Platform.isMacOS || Platform.isWindows) &&
-          library?.isNotEmpty == true &&
-          fixture?.isNotEmpty == true;
+      library?.isNotEmpty == true &&
+      fixture?.isNotEmpty == true;
   final skipReason = switch (configured) {
     true => null,
-    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
-        'platform to run large-transfer tests.',
+    _ =>
+      'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
+          'platform to run large-transfer tests.',
   };
 
   test(
@@ -72,18 +73,15 @@ void main() {
       final outputDone = Completer<void>();
       var received = 0;
       var mismatched = false;
-      final subscription = session.output.listen(
-        (chunk) {
-          for (var index = 0; index < chunk.length; index++) {
-            if (chunk[index] != (received + index) % 251) {
-              mismatched = true;
-              break;
-            }
+      final subscription = session.output.listen((chunk) {
+        for (var index = 0; index < chunk.length; index++) {
+          if (chunk[index] != (received + index) % 251) {
+            mismatched = true;
+            break;
           }
-          received += chunk.length;
-        },
-        onDone: outputDone.complete,
-      );
+        }
+        received += chunk.length;
+      }, onDone: outputDone.complete);
       try {
         subscription.pause();
         await Future<void>.delayed(const Duration(seconds: 3));

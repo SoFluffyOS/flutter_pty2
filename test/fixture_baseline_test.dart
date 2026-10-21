@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   final fixturePath = Platform.environment['PTY_TEST_CHILD'];
@@ -13,11 +13,11 @@ void main() {
       final fixture = fixturePath;
       if (fixture == null || fixture.isEmpty) return;
 
-      final process = await Process.start(
-        fixture,
-        const ['exit-after-output', '37', 'fixture-sentinel'],
-        runInShell: false,
-      );
+      final process = await Process.start(fixture, const [
+        'exit-after-output',
+        '37',
+        'fixture-sentinel',
+      ], runInShell: false);
 
       final outputFuture = process.stdout.fold<List<int>>(
         <int>[],

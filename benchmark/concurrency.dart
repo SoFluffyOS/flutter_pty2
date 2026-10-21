@@ -13,11 +13,7 @@ Future<void> main() async {
       'idle_concurrency',
       () => _runIdleCohort(count),
     );
-    writeBenchmark(
-      idle.summary,
-      sessions: count,
-      cpuUsage: idle.cpuUsage,
-    );
+    writeBenchmark(idle.summary, sessions: count, cpuUsage: idle.cpuUsage);
 
     final loaded = await runBenchmarkWithCpu(
       'loaded_concurrency',
@@ -40,9 +36,7 @@ Future<Duration> _runIdleCohort(int count) async {
   try {
     await Future.wait(
       List<Future<void>>.generate(count, (index) async {
-        sessions.add(
-          await Pty.spawn(benchmarkFixtureOptions(const ['hold'])),
-        );
+        sessions.add(await Pty.spawn(benchmarkFixtureOptions(const ['hold'])));
       }),
     );
     stopwatch.stop();
@@ -65,9 +59,7 @@ Future<Duration> _runLoadedCohort(int count) async {
     await Future.wait(
       List<Future<void>>.generate(count, (index) async {
         final session = await Pty.spawn(
-          benchmarkFixtureOptions(
-            ['flood-output', '$_loadedOutputBytes'],
-          ),
+          benchmarkFixtureOptions(['flood-output', '$_loadedOutputBytes']),
         );
         sessions.add(session);
         outputs.add(collectBenchmarkOutput(session));
@@ -99,9 +91,7 @@ Future<void> _reportLiveMemory(int count) async {
   try {
     await Future.wait(
       List<Future<void>>.generate(count, (index) async {
-        sessions.add(
-          await Pty.spawn(benchmarkFixtureOptions(const ['hold'])),
-        );
+        sessions.add(await Pty.spawn(benchmarkFixtureOptions(const ['hold'])));
       }),
     );
     final after = ProcessInfo.currentRss;

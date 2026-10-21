@@ -1,3 +1,8 @@
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+// pipe2
+#define _GNU_SOURCE
+#endif
+
 #include "pty_unix_spawn.h"
 
 #include <errno.h>
@@ -22,6 +27,7 @@
 #endif
 
 #if defined(__APPLE__)
+#include <libproc.h>
 #include <util.h>
 #elif defined(__ANDROID__)
 #include <fcntl.h>
@@ -434,6 +440,84 @@ static int set_close_on_exec(int fd)
     return fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
 }
 
+/* A pipe whose ends close on exec. Linux sets the flag atomically, so a
+ * process another thread starts meanwhile cannot inherit an end. */
+static int open_cloexec_pipe(int fds[2])
+{
+#if defined(__linux__)
+    return pipe2(fds, O_CLOEXEC);
+#else
+    if (pipe(fds) != 0) return -1;
+    if (set_close_on_exec(fds[0]) == 0 && set_close_on_exec(fds[1]) == 0) {
+        return 0;
+    }
+    const int error_number = errno;
+    close(fds[0]);
+    close(fds[1]);
+    errno = error_number;
+    return -1;
+#endif
+}
+
+/* Room to list this process's open descriptors after fork. */
+typedef struct {
+    void *buffer;
+    int size;
+} PtyFdList;
+
+static PtyFdList fd_list_prepare(void)
+{
+    PtyFdList list = {NULL, 0};
+#if defined(__APPLE__)
+    const int needed = proc_pidinfo(getpid(), PROC_PIDLISTFDS, 0, NULL, 0);
+    if (needed <= 0) return list;
+    // Leave room for descriptors other threads open before the fork.
+    const int size = needed * 2 + 64 * (int)PROC_PIDLISTFD_SIZE;
+    list.buffer = malloc((size_t)size);
+    if (list.buffer != NULL) list.size = size;
+#endif
+    return list;
+}
+
+/*
+ * Closes every open descriptor above stderr except those in keep, from a
+ * list of the open ones, and returns 1; returns 0 when no complete list is
+ * available. Without it, closing every possible number costs a million
+ * close calls under a high descriptor limit. Async-signal-safe:
+ * proc_pidinfo is a plain system call.
+ */
+static int close_listed_fds_except(PtyFdList list,
+                                   const int *keep,
+                                   int keep_count)
+{
+#if defined(__APPLE__)
+    if (list.buffer == NULL) return 0;
+    const int filled = proc_pidinfo(getpid(),
+                                    PROC_PIDLISTFDS,
+                                    0,
+                                    list.buffer,
+                                    list.size);
+    if (filled <= 0 || filled >= list.size) return 0;
+    const struct proc_fdinfo *entries = list.buffer;
+    const int count = filled / (int)PROC_PIDLISTFD_SIZE;
+    for (int index = 0; index < count; index++) {
+        const int fd = entries[index].proc_fd;
+        if (fd <= STDERR_FILENO) continue;
+        int kept = 0;
+        for (int keep_index = 0; keep_index < keep_count; keep_index++) {
+            if (keep[keep_index] == fd) kept = 1;
+        }
+        if (!kept) close(fd);
+    }
+    return 1;
+#else
+    (void)list;
+    (void)keep;
+    (void)keep_count;
+    return 0;
+#endif
+}
+
 static int max_open_fd(void)
 {
     long value = sysconf(_SC_OPEN_MAX);
@@ -500,13 +584,67 @@ static void close_extra_fds(int status_fd, int maximum_fd)
     }
 }
 
-static int read_child_error(int fd, PtyChildError *error)
+static void close_fd_range(int first, int last, int is_last_range)
 {
-    uint8_t *data = (uint8_t *)error;
+    if (first > last) return;
+#if defined(__linux__) && defined(SYS_close_range)
+    const unsigned int range_end = is_last_range ? UINT_MAX : (unsigned int)last;
+    if (syscall(SYS_close_range, (unsigned int)first, range_end, 0) == 0) {
+        return;
+    }
+#else
+    (void)is_last_range;
+#endif
+    for (int fd = first; fd <= last; fd++) close(fd);
+}
+
+/*
+ * Closes every descriptor above stderr except those in keep. The supervisor
+ * never execs, so close-on-exec flags cannot clean up what it inherited.
+ * Async-signal-safe.
+ */
+static void close_fds_except(const int *keep, int keep_count, int maximum_fd)
+{
+    int first = STDERR_FILENO + 1;
+    for (;;) {
+        int next_kept = maximum_fd;
+        for (int index = 0; index < keep_count; index++) {
+            if (keep[index] >= first && keep[index] < next_kept) {
+                next_kept = keep[index];
+            }
+        }
+        close_fd_range(first, next_kept - 1, next_kept == maximum_fd);
+        if (next_kept == maximum_fd) return;
+        first = next_kept + 1;
+    }
+}
+
+/* Async-signal-safe: the supervisor uses it after fork. */
+static int write_fully(int fd, const void *buffer, size_t size)
+{
+    const uint8_t *data = buffer;
+    size_t remaining = size;
+    while (remaining > 0) {
+        const ssize_t written = write(fd, data, remaining);
+        if (written > 0) {
+            data += written;
+            remaining -= (size_t)written;
+            continue;
+        }
+        if (written < 0 && errno == EINTR) continue;
+        return 0;
+    }
+    return 1;
+}
+
+/* Returns 1 when size bytes were read, 0 at end of file before any byte, or
+ * -1 on an error or a short read. */
+static int read_fully(int fd, void *buffer, size_t size)
+{
+    uint8_t *data = buffer;
     size_t received = 0;
-    while (received < sizeof(*error)) {
-        const ssize_t result = read(fd, data + received,
-                                    sizeof(*error) - received);
+    while (received < size) {
+        const ssize_t result = read(fd, data + received, size - received);
         if (result > 0) {
             received += (size_t)result;
             continue;
@@ -518,27 +656,108 @@ static int read_child_error(int fd, PtyChildError *error)
     return 1;
 }
 
+static int read_child_error(int fd, PtyChildError *error)
+{
+    return read_fully(fd, error, sizeof(*error));
+}
+
+int pty_unix_read_exit(int exit_fd, PtyUnixExit *exit)
+{
+    return read_fully(exit_fd, exit, sizeof(*exit));
+}
+
+void pty_unix_release_process(PtyUnixProcess *process)
+{
+    if (process == NULL) return;
+    if (process->release_fd >= 0) close(process->release_fd);
+    if (process->exit_fd >= 0) close(process->exit_fd);
+    process->release_fd = -1;
+    process->exit_fd = -1;
+}
+
+/*
+ * Detaches the supervisor from the caller: its stdio moves to /dev/null and
+ * its working directory to /, so a pipe the caller writes to sees end of
+ * file once the caller exits and no volume stays busy. It ignores the
+ * signals a terminal, or killing the caller's processes by name, would
+ * send, so the program never loses its supervisor; a closed exit pipe
+ * fails the write instead of killing it. Async-signal-safe.
+ */
+static void supervisor_detach(void)
+{
+    const int null_fd = open("/dev/null", O_RDWR);
+    if (null_fd >= 0) {
+        dup2(null_fd, STDIN_FILENO);
+        dup2(null_fd, STDOUT_FILENO);
+        dup2(null_fd, STDERR_FILENO);
+        if (null_fd > STDERR_FILENO) close(null_fd);
+    }
+    if (chdir("/") != 0) {
+        // Staying in the caller's directory only keeps it busy.
+    }
+    struct sigaction ignore = {
+        .sa_handler = SIG_IGN,
+    };
+    sigemptyset(&ignore.sa_mask);
+    const int ignored[] = {SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGPIPE};
+    for (size_t index = 0; index < sizeof(ignored) / sizeof(ignored[0]);
+         index++) {
+        sigaction(ignored[index], &ignore, NULL);
+    }
+}
+
+/*
+ * Supervisor body: waits for the program to exit without reaping it, reports
+ * how, waits until the caller releases the program, then reaps it. Only
+ * async-signal-safe calls, as it runs in a child of a multithreaded process.
+ */
+static void supervise_program(pid_t program, int exit_fd, int release_fd)
+{
+    if (!write_fully(exit_fd, &program, sizeof(program))) _exit(126);
+    siginfo_t info;
+    for (;;) {
+        info.si_pid = 0;
+        if (waitid(P_PID, (id_t)program, &info, WEXITED | WNOWAIT) == 0) break;
+        if (errno != EINTR) _exit(126);
+    }
+    const PtyUnixExit report = {
+        .signaled = info.si_code == CLD_EXITED ? 0 : 1,
+        .value = info.si_status,
+    };
+    write_fully(exit_fd, &report, sizeof(report));
+    uint8_t ignored;
+    while (read(release_fd, &ignored, sizeof(ignored)) != 0) {
+        if (errno != EINTR) break;
+    }
+    while (waitpid(program, NULL, 0) < 0 && errno == EINTR) {}
+    _exit(0);
+}
+
+/* The program is reaped by its supervisor, so this only stops it. */
 static void cleanup_failed_child(pid_t process_id, int master_fd)
 {
     if (master_fd >= 0) close(master_fd);
     if (process_id <= 0) return;
     kill(-process_id, SIGKILL);
     kill(process_id, SIGKILL);
-    while (waitpid(process_id, NULL, 0) < 0 && errno == EINTR) {}
 }
 
 int pty_unix_spawn(const PtySpawnOptions *options,
                    int *master_fd,
                    int *slave_fd,
-                   pid_t *process_id,
+                   PtyUnixProcess *process,
                    PtyError *error)
 {
     if (master_fd != NULL) *master_fd = -1;
     if (slave_fd != NULL) *slave_fd = -1;
-    if (process_id != NULL) *process_id = -1;
+    if (process != NULL) {
+        process->process_id = -1;
+        process->exit_fd = -1;
+        process->release_fd = -1;
+    }
     pty_error_clear(error);
     if (options == NULL || master_fd == NULL || slave_fd == NULL ||
-        process_id == NULL ||
+        process == NULL ||
         options->executable == NULL || options->executable[0] == '\0') {
         pty_error_set(error,
                       PTY_ERROR_DOMAIN_INTERNAL,
@@ -648,6 +867,16 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     int descriptor_error = 0;
     master = move_fd_above(master, PTY_CHILD_STATUS_FD + 1, &descriptor_error);
     slave = move_fd_above(slave, PTY_CHILD_STATUS_FD + 1, &descriptor_error);
+    // openpty does not set close-on-exec, so every process the host starts
+    // would inherit the terminal and keep it from hanging up.
+    if (master >= 0 && slave >= 0 &&
+        (set_close_on_exec(master) != 0 || set_close_on_exec(slave) != 0)) {
+        descriptor_error = errno;
+        close(master);
+        close(slave);
+        master = -1;
+        slave = -1;
+    }
     if (master < 0 || slave < 0) {
         const int error_number = descriptor_error == 0 ? EIO : descriptor_error;
         if (master >= 0) close(master);
@@ -661,7 +890,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     }
 
     int status_pipe[2] = {-1, -1};
-    if (pipe(status_pipe) != 0) {
+    if (open_cloexec_pipe(status_pipe) != 0) {
         const int error_number = errno;
         cleanup_failed_child(-1, master);
         close(slave);
@@ -720,6 +949,90 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     }
     close(status_pipe[1]);
 
+    int exit_pipe[2] = {-1, -1};
+    if (open_cloexec_pipe(exit_pipe) != 0) {
+        const int error_number = errno;
+        close(status_pipe[0]);
+        close(status_fd);
+        cleanup_failed_child(-1, master);
+        close(slave);
+        free_string_vector(argv, options->argument_count + 1);
+        free_string_vector(envp, options->environment_count);
+        free(resolved_executable);
+        pty_error_set_errno(error, PTY_ERROR_SPAWN_FAILED, error_number,
+                            "creating exit status pipe failed");
+        return 0;
+    }
+    descriptor_error = 0;
+    exit_pipe[0] = move_fd_above(exit_pipe[0],
+                                 PTY_CHILD_STATUS_FD + 1,
+                                 &descriptor_error);
+    exit_pipe[1] = move_fd_above(exit_pipe[1],
+                                 PTY_CHILD_STATUS_FD + 1,
+                                 &descriptor_error);
+    if (exit_pipe[0] < 0 || exit_pipe[1] < 0 ||
+        set_close_on_exec(exit_pipe[0]) != 0 ||
+        set_close_on_exec(exit_pipe[1]) != 0) {
+        const int error_number = descriptor_error != 0 ? descriptor_error
+                                                       : errno;
+        if (exit_pipe[0] >= 0) close(exit_pipe[0]);
+        if (exit_pipe[1] >= 0) close(exit_pipe[1]);
+        close(status_pipe[0]);
+        close(status_fd);
+        cleanup_failed_child(-1, master);
+        close(slave);
+        free_string_vector(argv, options->argument_count + 1);
+        free_string_vector(envp, options->environment_count);
+        free(resolved_executable);
+        pty_error_set_errno(error, PTY_ERROR_SPAWN_FAILED, error_number,
+                            "placing exit status pipe failed");
+        return 0;
+    }
+
+    int release_pipe[2] = {-1, -1};
+    if (open_cloexec_pipe(release_pipe) != 0) {
+        const int error_number = errno;
+        close(exit_pipe[0]);
+        close(exit_pipe[1]);
+        close(status_pipe[0]);
+        close(status_fd);
+        cleanup_failed_child(-1, master);
+        close(slave);
+        free_string_vector(argv, options->argument_count + 1);
+        free_string_vector(envp, options->environment_count);
+        free(resolved_executable);
+        pty_error_set_errno(error, PTY_ERROR_SPAWN_FAILED, error_number,
+                            "creating process release pipe failed");
+        return 0;
+    }
+    descriptor_error = 0;
+    release_pipe[0] = move_fd_above(release_pipe[0],
+                                    PTY_CHILD_STATUS_FD + 1,
+                                    &descriptor_error);
+    release_pipe[1] = move_fd_above(release_pipe[1],
+                                    PTY_CHILD_STATUS_FD + 1,
+                                    &descriptor_error);
+    if (release_pipe[0] < 0 || release_pipe[1] < 0 ||
+        set_close_on_exec(release_pipe[0]) != 0 ||
+        set_close_on_exec(release_pipe[1]) != 0) {
+        const int error_number = descriptor_error != 0 ? descriptor_error
+                                                       : errno;
+        if (release_pipe[0] >= 0) close(release_pipe[0]);
+        if (release_pipe[1] >= 0) close(release_pipe[1]);
+        close(exit_pipe[0]);
+        close(exit_pipe[1]);
+        close(status_pipe[0]);
+        close(status_fd);
+        cleanup_failed_child(-1, master);
+        close(slave);
+        free_string_vector(argv, options->argument_count + 1);
+        free_string_vector(envp, options->environment_count);
+        free(resolved_executable);
+        pty_error_set_errno(error, PTY_ERROR_SPAWN_FAILED, error_number,
+                            "placing process release pipe failed");
+        return 0;
+    }
+
     const int maximum_fd = max_open_fd();
     struct sigaction default_signal_action = {
         .sa_handler = SIG_DFL,
@@ -728,6 +1041,10 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     sigset_t empty_signal_mask;
     if (sigemptyset(&empty_signal_mask) != 0) {
         const int error_number = errno;
+        close(release_pipe[0]);
+        close(release_pipe[1]);
+        close(exit_pipe[0]);
+        close(exit_pipe[1]);
         close(status_pipe[0]);
         close(status_fd);
         cleanup_failed_child(-1, master);
@@ -741,9 +1058,21 @@ int pty_unix_spawn(const PtySpawnOptions *options,
                             "preparing child signal mask failed");
         return 0;
     }
+    /*
+     * The fork chain is launcher -> supervisor -> program. The launcher exits
+     * as soon as the supervisor starts, so the supervisor is adopted by init
+     * and this process only ever waits for the launcher. The supervisor waits
+     * for the program and reports its pid and wait status on exit_pipe.
+     */
+    PtyFdList open_fds = fd_list_prepare();
     const pid_t child = fork();
+    if (child != 0) free(open_fds.buffer);
     if (child < 0) {
         const int error_number = errno;
+        close(release_pipe[0]);
+        close(release_pipe[1]);
+        close(exit_pipe[0]);
+        close(exit_pipe[1]);
         close(status_pipe[0]);
         close(status_fd);
         cleanup_failed_child(-1, master);
@@ -767,8 +1096,49 @@ int pty_unix_spawn(const PtySpawnOptions *options,
                 errno);
             _exit(126);
         }
-        close(master);
-        close(status_pipe[0]);
+        const int kept_fds[] = {
+            status_fd,
+            slave,
+            exit_pipe[1],
+            release_pipe[0],
+        };
+        const int kept_count = (int)(sizeof(kept_fds) / sizeof(kept_fds[0]));
+        if (!close_listed_fds_except(open_fds, kept_fds, kept_count)) {
+            close_fds_except(kept_fds, kept_count, maximum_fd);
+        }
+        // Only the kept descriptors are open now, so the program need not
+        // close every possible number again.
+        int program_fd_limit = 0;
+        for (int index = 0; index < kept_count; index++) {
+            if (kept_fds[index] >= program_fd_limit) {
+                program_fd_limit = kept_fds[index] + 1;
+            }
+        }
+        const pid_t supervisor = fork();
+        if (supervisor < 0) {
+            child_report_error(status_fd, PTY_CHILD_STAGE_SUPERVISOR, errno);
+            _exit(126);
+        }
+        if (supervisor > 0) _exit(0);
+
+        // Supervisor: leave the caller's session so job-control signals sent
+        // to the caller's process group do not reach it.
+        if (setsid() < 0) {
+            child_report_error(status_fd, PTY_CHILD_STAGE_SUPERVISOR, errno);
+            _exit(126);
+        }
+        const pid_t program = fork();
+        if (program < 0) {
+            child_report_error(status_fd, PTY_CHILD_STAGE_SUPERVISOR, errno);
+            _exit(126);
+        }
+        if (program > 0) {
+            close(slave);
+            close(status_fd);
+            supervisor_detach();
+            supervise_program(program, exit_pipe[1], release_pipe[0]);
+        }
+
         if (setsid() < 0) {
             child_report_error(status_fd, PTY_CHILD_STAGE_SETSID, errno);
             _exit(126);
@@ -786,7 +1156,7 @@ int pty_unix_spawn(const PtySpawnOptions *options,
             _exit(126);
         }
         if (slave > STDERR_FILENO && slave != status_fd) close(slave);
-        close_extra_fds(status_fd, maximum_fd);
+        close_extra_fds(status_fd, program_fd_limit);
         if (options->working_directory != NULL &&
             options->working_directory[0] != '\0' &&
             chdir(options->working_directory) != 0) {
@@ -799,6 +1169,11 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     }
 
     close(status_fd);
+    close(exit_pipe[1]);
+    close(release_pipe[0]);
+    // The launcher exits right after starting the supervisor. A runtime that
+    // reaps every child may have taken it already, which reports ECHILD.
+    while (waitpid(child, NULL, 0) < 0 && errno == EINTR) {}
     PtyChildError child_error;
     const int status_result = read_child_error(status_pipe[0], &child_error);
     close(status_pipe[0]);
@@ -806,7 +1181,16 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     free_string_vector(envp, options->environment_count);
     free(resolved_executable);
     if (status_result != 0) {
-        cleanup_failed_child(child, master);
+        // On a reported failure the program has exited on its own. Otherwise
+        // stop it if the supervisor managed to report its pid.
+        pid_t program = -1;
+        if (status_result < 0 &&
+            read_fully(exit_pipe[0], &program, sizeof(program)) != 1) {
+            program = -1;
+        }
+        close(exit_pipe[0]);
+        close(release_pipe[1]);
+        cleanup_failed_child(program, master);
         close(slave);
         if (status_result < 0) {
             pty_error_set(error,
@@ -831,10 +1215,27 @@ int pty_unix_spawn(const PtySpawnOptions *options,
         return 0;
     }
 
+    pid_t program = -1;
+    if (read_fully(exit_pipe[0], &program, sizeof(program)) != 1 ||
+        program <= 0) {
+        close(exit_pipe[0]);
+        close(release_pipe[1]);
+        cleanup_failed_child(-1, master);
+        close(slave);
+        pty_error_set(error,
+                      PTY_ERROR_DOMAIN_INTERNAL,
+                      PTY_ERROR_SPAWN_FAILED,
+                      EIO,
+                      "reading the spawned process id failed");
+        return 0;
+    }
+
     const int flags = fcntl(master, F_GETFL);
     if (flags < 0 || fcntl(master, F_SETFL, flags | O_NONBLOCK) != 0) {
         const int error_number = errno;
-        cleanup_failed_child(child, master);
+        cleanup_failed_child(program, master);
+        close(exit_pipe[0]);
+        close(release_pipe[1]);
         close(slave);
         pty_error_set_errno(error, PTY_ERROR_SPAWN_FAILED, error_number,
                             "configuring PTY master failed");
@@ -842,6 +1243,8 @@ int pty_unix_spawn(const PtySpawnOptions *options,
     }
     *master_fd = master;
     *slave_fd = slave;
-    *process_id = child;
+    process->process_id = program;
+    process->exit_fd = exit_pipe[0];
+    process->release_fd = release_pipe[1];
     return 1;
 }

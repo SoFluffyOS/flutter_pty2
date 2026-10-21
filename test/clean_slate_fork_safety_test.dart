@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:flutter_pty2/flutter_pty2.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
@@ -10,8 +10,9 @@ void main() {
       (Platform.isLinux || Platform.isMacOS) && library?.isNotEmpty == true;
   final skipReason = switch (configured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY on Linux or macOS to run fork-safety '
-        'tests.',
+    _ =>
+      'Set FLUTTER_PTY2_LIBRARY on Linux or macOS to run fork-safety '
+          'tests.',
   };
 
   test(

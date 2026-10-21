@@ -8,12 +8,21 @@
 The original package is no longer maintained, so this fork continues the package
 under a new pub package name.
 
-This package provides a Flutter FFI pseudo-terminal implementation for spawning
-and controlling terminal processes. Version 2.0 uses the clean-slate session
-API below; the legacy `Pty.start` API is not available. Platform verification
-is tracked separately for Windows, Android, and iOS.
+This package provides a Dart FFI pseudo-terminal implementation for spawning
+and controlling terminal processes, in Flutter apps and in Dart command-line
+apps. It uses the clean-slate session API below; the legacy `Pty.start` API is
+not available. Platform verification is tracked separately for Windows,
+Android, and iOS.
 
-The package requires Dart 3 and Flutter 3.10 or newer.
+The package requires Dart 3.10 or newer (Flutter 3.38 or newer). Its build hook
+compiles the native library with the platform's C compiler, so `flutter build`,
+`flutter test`, `dart test`, `dart run` and `dart build cli` bundle it
+automatically. `dart build cli` places it next to the executable in
+`bundle/lib/`. A C toolchain is required: Xcode command-line tools on macOS,
+`clang` or `gcc` on Linux, and Visual Studio's C++ tools on Windows.
+
+Exit codes stay correct in hosts that reap every child process, such as a Dart
+program that also runs `dart:io` processes.
 
 ## Platform
 
@@ -108,10 +117,10 @@ production iOS support.
 Install dependencies and run the Dart checks from this directory:
 
 ```sh
-flutter pub get
-dart format --set-exit-if-changed lib test benchmark tool
-flutter analyze
-flutter test
+dart pub get
+dart format --set-exit-if-changed lib test benchmark tool hook
+dart analyze
+dart test
 ```
 
 The unconfigured Dart suite runs all model and controller tests. Native
@@ -131,11 +140,16 @@ On macOS, run the configured Unix integration suite with:
 ```sh
 FLUTTER_PTY2_LIBRARY=/tmp/flutter_pty2-native/libflutter_pty2.dylib \
 PTY_TEST_CHILD=/tmp/flutter_pty2-fixture/pty_test_child \
-flutter test test/clean_slate_integration_test.dart
+dart test --concurrency=1 test/clean_slate_integration_test.dart
 ```
 
+`dart test` runs test files as isolates of one process, which share the native
+library's session counters, so run configured native suites with
+`--concurrency=1`. Without `FLUTTER_PTY2_LIBRARY`, sessions use the library the
+build hook bundles; `test/bundled_library_test.dart` covers that path.
+
 The Android clean-slate integration subset runs from the generated example app
-so Flutter installs the FFI plugin into an emulator process:
+so Flutter bundles the native library into an emulator process:
 
 ```sh
 cd example

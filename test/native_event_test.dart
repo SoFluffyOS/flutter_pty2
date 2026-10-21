@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_pty2/src/internal/native_event.dart';
 import 'package:flutter_pty2/src/pty_exception.dart';
 import 'package:flutter_pty2/src/pty_exit.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('parses spawned and output events', () {
@@ -44,18 +44,12 @@ void main() {
   });
 
   test('rejects malformed and unknown events', () {
-    expect(
-      () => NativeEvent.parse(<Object?>[]),
-      throwsFormatException,
-    );
-    expect(
-      () => NativeEvent.parse(<Object?>[99]),
-      throwsFormatException,
-    );
+    expect(() => NativeEvent.parse(<Object?>[]), throwsFormatException);
+    expect(() => NativeEvent.parse(<Object?>[99]), throwsFormatException);
     expect(
       () => NativeEvent.parse(<Object?>[
         3,
-        [1, 2]
+        [1, 2],
       ]),
       throwsFormatException,
     );

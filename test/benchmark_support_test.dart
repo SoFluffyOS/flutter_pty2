@@ -1,5 +1,5 @@
 import 'package:flutter_pty2/src/internal/internal.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('reads current process CPU time on supported hosts', () {

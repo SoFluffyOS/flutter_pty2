@@ -10,7 +10,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_pty2/flutter_pty2.dart';
 import 'package:flutter_pty2/src/generated/flutter_pty_bindings_generated.dart'
     as native;
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
@@ -22,8 +22,9 @@ void main() {
   };
   final skipReason = switch (configured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
-        'platform to run finalizer tests.',
+    _ =>
+      'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
+          'platform to run finalizer tests.',
   };
 
   test(
@@ -90,18 +91,12 @@ Future<WeakReference<PtySession>> _spawnUnownedSession({
   required List<String> arguments,
 }) async {
   final session = await Pty.spawn(
-    PtySpawnOptions(
-      executable: executable,
-      arguments: arguments,
-    ),
+    PtySpawnOptions(executable: executable, arguments: arguments),
   );
   return WeakReference(session);
 }
 
-Future<bool> _waitFor(
-  bool Function() predicate, {
-  int attempts = 20,
-}) async {
+Future<bool> _waitFor(bool Function() predicate, {int attempts = 20}) async {
   for (var attempt = 0; attempt < attempts; attempt++) {
     if (predicate()) return true;
     await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -122,10 +117,7 @@ Future<bool> _requestFullGc() async {
           'jsonrpc': '2.0',
           'id': 1,
           'method': 'getAllocationProfile',
-          'params': <String, Object>{
-            'isolateId': isolateId,
-            'gc': true,
-          },
+          'params': <String, Object>{'isolateId': isolateId, 'gc': true},
         }),
       );
       await socket.first.timeout(const Duration(seconds: 5));
@@ -140,8 +132,8 @@ Future<bool> _requestFullGc() async {
 
 final class _NativeDebug {
   _NativeDebug(String path)
-      : _bindings = native.FlutterPtyBindings(DynamicLibrary.open(path)),
-        _pointer = calloc<native.PtyDebugStats>();
+    : _bindings = native.FlutterPtyBindings(DynamicLibrary.open(path)),
+      _pointer = calloc<native.PtyDebugStats>();
 
   final native.FlutterPtyBindings _bindings;
   final Pointer<native.PtyDebugStats> _pointer;

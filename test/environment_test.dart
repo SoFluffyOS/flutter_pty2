@@ -1,13 +1,10 @@
 import 'package:flutter_pty2/src/pty_environment.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   test('case-insensitive replacement collapses duplicate keys', () {
     final environment = buildEnvironment(
-      const PtyEnvironment.replace({
-        'Path': 'first',
-        'PATH': 'second',
-      }),
+      const PtyEnvironment.replace({'Path': 'first', 'PATH': 'second'}),
       caseInsensitive: true,
     );
 
@@ -30,10 +27,7 @@ void main() {
 
   test('case-sensitive replacement preserves caller keys', () {
     final environment = buildEnvironment(
-      const PtyEnvironment.replace({
-        'Path': 'first',
-        'PATH': 'second',
-      }),
+      const PtyEnvironment.replace({'Path': 'first', 'PATH': 'second'}),
       caseInsensitive: false,
     );
 

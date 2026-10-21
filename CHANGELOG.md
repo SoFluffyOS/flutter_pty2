@@ -1,3 +1,31 @@
+## 3.0.0-dev.1 - 2026-10-12
+
+### Breaking changes
+
+* Build the native library with a Dart build hook instead of Flutter's FFI
+  plugin system. The package no longer depends on Flutter and also works in
+  Dart command-line apps (`dart run`, `dart test`, `dart build cli`).
+* Require Dart 3.10 or newer (Flutter 3.38 or newer) and a C toolchain on the
+  build machine.
+* Remove the `android`, `ios`, `linux`, `macos` and `windows` plugin folders
+  and the CocoaPods and Swift Package Manager specs.
+
+### Fixes
+
+* Report the exit code on Unix when the host reaps every child process, as the
+  Dart VM does while it has `dart:io` processes running. Sessions failed with
+  "waiting for PTY process failed: No child processes" instead. Programs now
+  start under a supervisor process that reports their exit.
+* Do not keep the host's stdout, stderr or working directory open while a
+  program runs, so a pipeline reading the host's output ends when the host
+  does.
+* Keep reporting the program's exit when the host's processes are killed by
+  name, and stop the program if its supervisor dies.
+* Spawn quickly under a high descriptor limit on macOS: 8 ms instead of
+  330 ms with a limit of 1,048,576.
+* Make the PTY master and slave close-on-exec, so processes the host starts
+  later no longer keep a closed terminal from hanging up.
+
 ## 2.0.0 - 2026-09-20
 
 This is a breaking clean-slate release. The legacy `Pty.start`, boolean

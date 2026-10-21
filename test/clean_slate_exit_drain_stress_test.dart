@@ -3,19 +3,20 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_pty2/flutter_pty2.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 
 void main() {
   final library = Platform.environment['FLUTTER_PTY2_LIBRARY'];
   final fixture = Platform.environment['PTY_TEST_CHILD'];
   final configured =
       (Platform.isLinux || Platform.isMacOS || Platform.isWindows) &&
-          library?.isNotEmpty == true &&
-          fixture?.isNotEmpty == true;
+      library?.isNotEmpty == true &&
+      fixture?.isNotEmpty == true;
   final skipReason = switch (configured) {
     true => false,
-    _ => 'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
-        'to run exit-drain stress.',
+    _ =>
+      'Set FLUTTER_PTY2_LIBRARY and PTY_TEST_CHILD on a desktop '
+          'to run exit-drain stress.',
   };
 
   test(

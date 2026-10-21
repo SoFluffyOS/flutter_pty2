@@ -12,14 +12,17 @@ Future<void> main() async {
     );
     final firstByte = Completer<Duration>();
     final stopwatch = Stopwatch();
-    final subscription = session.output.listen((chunk) {
-      if (chunk.isEmpty || firstByte.isCompleted) return;
-      stopwatch.stop();
-      firstByte.complete(stopwatch.elapsed);
-    }, onDone: () {
-      if (firstByte.isCompleted) return;
-      firstByte.completeError(StateError('Child produced no output.'));
-    });
+    final subscription = session.output.listen(
+      (chunk) {
+        if (chunk.isEmpty || firstByte.isCompleted) return;
+        stopwatch.stop();
+        firstByte.complete(stopwatch.elapsed);
+      },
+      onDone: () {
+        if (firstByte.isCompleted) return;
+        firstByte.completeError(StateError('Child produced no output.'));
+      },
+    );
     try {
       stopwatch.start();
       await session.done;
@@ -36,14 +39,17 @@ Future<void> main() async {
       benchmarkFixtureOptions(const ['copy-input', '1']),
     );
     final firstByte = Completer<void>();
-    final subscription = session.output.listen((chunk) {
-      if (chunk.isNotEmpty && !firstByte.isCompleted) {
-        firstByte.complete();
-      }
-    }, onDone: () {
-      if (firstByte.isCompleted) return;
-      firstByte.completeError(StateError('Child produced no output.'));
-    });
+    final subscription = session.output.listen(
+      (chunk) {
+        if (chunk.isNotEmpty && !firstByte.isCompleted) {
+          firstByte.complete();
+        }
+      },
+      onDone: () {
+        if (firstByte.isCompleted) return;
+        firstByte.completeError(StateError('Child produced no output.'));
+      },
+    );
     try {
       final stopwatch = Stopwatch()..start();
       await session.input.write(Uint8List.fromList([0xa5]));

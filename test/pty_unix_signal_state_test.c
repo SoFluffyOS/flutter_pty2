@@ -39,6 +39,15 @@ static PtySpawnOptions spawn_options(const char *executable,
     };
 }
 
+/* Reads the program's exit report when it is available without blocking. */
+static int try_read_exit(const PtyUnixProcess *process, PtyUnixExit *exit_report)
+{
+    struct pollfd descriptor = {.fd = process->exit_fd, .events = POLLIN};
+    if (poll(&descriptor, 1, 0) <= 0) return 0;
+    assert(pty_unix_read_exit(process->exit_fd, exit_report) == 1);
+    return 1;
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && strcmp(argv[1], "--report-signal-state") == 0) {
@@ -66,13 +75,13 @@ int main(int argc, char **argv)
 
     int master_fd = -1;
     int slave_fd = -1;
-    pid_t process_id = -1;
+    PtyUnixProcess process;
     PtyError error;
     const int spawned = pty_unix_spawn(
         &options,
         &master_fd,
         &slave_fd,
-        &process_id,
+        &process,
         &error);
 
     assert(sigaction(SIGTSTP, &previous_action, NULL) == 0);
@@ -83,7 +92,7 @@ int main(int argc, char **argv)
 
     char output[128] = {0};
     size_t output_length = 0;
-    int status = 0;
+    PtyUnixExit exit_report = {0};
     int child_reaped = 0;
     for (int attempt = 0; attempt < 100; attempt++) {
         struct pollfd descriptor = {.fd = master_fd, .events = POLLIN};
@@ -95,9 +104,7 @@ int main(int argc, char **argv)
                 sizeof(output) - output_length - 1);
             if (length > 0) output_length += (size_t)length;
         }
-        if (!child_reaped && waitpid(process_id, &status, WNOHANG) == process_id) {
-            child_reaped = 1;
-        }
+        if (!child_reaped) child_reaped = try_read_exit(&process, &exit_report);
         if (child_reaped &&
             strstr(output, "term_blocked=0") != NULL &&
             strstr(output, "tstp_ignored=0") != NULL) {
@@ -105,11 +112,14 @@ int main(int argc, char **argv)
         }
     }
 
+    if (!child_reaped) {
+        assert(pty_unix_read_exit(process.exit_fd, &exit_report) == 1);
+    }
+    pty_unix_release_process(&process);
     assert(close(master_fd) == 0);
     assert(close(slave_fd) == 0);
-    if (!child_reaped) assert(waitpid(process_id, &status, 0) == process_id);
-    assert(WIFEXITED(status));
-    assert(WEXITSTATUS(status) == 0);
+    assert(exit_report.signaled == 0);
+    assert(exit_report.value == 0);
     assert(strstr(output, "term_blocked=0") != NULL);
     assert(strstr(output, "tstp_ignored=0") != NULL);
     assert(output_length > 0);

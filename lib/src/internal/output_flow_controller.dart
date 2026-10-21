@@ -8,13 +8,13 @@ final class OutputFlowController {
     required void Function() discardOutput,
     void Function()? onDrained,
     Object? owner,
-  })  : _acknowledge = acknowledge,
-        _discardOutput = discardOutput,
-        _onDrained = onDrained,
-        _ownerReference = switch (owner) {
-          final owner? => WeakReference(owner),
-          null => null,
-        } {
+  }) : _acknowledge = acknowledge,
+       _discardOutput = discardOutput,
+       _onDrained = onDrained,
+       _ownerReference = switch (owner) {
+         final owner? => WeakReference(owner),
+         null => null,
+       } {
     _controller = StreamController<Uint8List>(
       sync: true,
       onListen: _handleListen,

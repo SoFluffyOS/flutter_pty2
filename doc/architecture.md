@@ -115,9 +115,33 @@ write(bytes) --> Dart bounded chunks --> native bounded queue --> PTY input
 
 Unix uses a nonblocking PTY master and a poll-based reactor. The reactor
 monitors the PTY master and a nonblocking wake pipe, handles partial writes,
-retries `EINTR`, and treats `EAGAIN` as backpressure. A separate waiter owns
-`waitpid`; process exit wakes the reactor so it can preserve trailing output
-before closing the PTY stream.
+retries `EINTR`, and treats `EAGAIN` as backpressure. A separate waiter reads
+the program's exit from its supervisor; process exit wakes the reactor so it
+can preserve trailing output before closing the PTY stream.
+
+The program is not a child of the host process. Spawning forks a short-lived
+launcher, which forks a supervisor and exits, so init adopts the supervisor.
+The supervisor forks the program, waits for it with `waitid(WNOWAIT)` and
+writes its pid and exit to a pipe. It reaps the program only after the session
+closes a release pipe, so the pid stays reserved, and signals cannot reach a
+recycled pid, until the exit is recorded. This keeps exit codes correct in
+hosts that reap every child with `waitpid(-1)`, as the Dart VM does while it
+has `dart:io` processes running. The launcher closes every inherited
+descriptor except the pipes and the PTY slave, because the supervisor never
+calls `execve` and close-on-exec flags would not clean them up. On macOS it
+closes only the descriptors `proc_pidinfo` lists as open, so spawning stays
+fast under a descriptor limit of a million.
+
+The supervisor moves its stdio to `/dev/null` and its working directory to
+`/`, so a pipe reading the host's output ends when the host exits. It ignores
+`SIGHUP`, `SIGINT`, `SIGQUIT`, `SIGTERM` and `SIGPIPE`, so killing the host's
+processes by name does not orphan the program. If the supervisor dies anyway,
+the session stops the program and reports an error instead of an exit.
+
+The PTY master and slave, and every pipe, are close-on-exec, so processes the
+host starts later do not inherit them. Linux creates the pipes with
+`pipe2(O_CLOEXEC)`; on macOS a process another thread starts between `pipe`
+and `fcntl` can still inherit an end.
 
 The slave PTY is not forced into raw mode during spawn. It retains standard
 terminal line discipline, including canonical input and `ISIG`, so a master
@@ -127,8 +151,8 @@ slave-side terminal mode themselves.
 
 Spawn preparation resolves `PATH` before `fork()`, deep-copies all options,
 and uses `execve()` with an explicit environment. A close-on-exec status pipe
-communicates `setsid`, controlling-terminal, `dup2`, `chdir`, and `execve`
-failures from the child without allocating after `fork()`.
+communicates supervisor, `setsid`, controlling-terminal, `dup2`, `chdir`, and
+`execve` failures from the child without allocating after `fork()`.
 
 The child also clears the inherited signal mask and resets every catchable
 signal disposition to `SIG_DFL` before session setup and `execve`. The mask and
