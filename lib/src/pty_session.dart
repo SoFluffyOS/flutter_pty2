@@ -9,6 +9,13 @@ import 'package:flutter_pty2/src/pty_size.dart';
 abstract interface class PtySession {
   int get pid;
 
+  /// Whether a program the shell started holds the terminal.
+  ///
+  /// Unix compares the terminal's foreground process group with the
+  /// program's. Windows has no foreground group, so it reports whether the
+  /// program has a live child process.
+  bool get hasForegroundProcess;
+
   PtyCapabilities get capabilities;
 
   Stream<Uint8List> get output;

@@ -26,6 +26,11 @@ external int pty_session_start(
 @Native<Int64 Function(Pointer<native.PtySession>)>()
 external int pty_session_pid(Pointer<native.PtySession> session);
 
+@Native<Int32 Function(Pointer<native.PtySession>)>()
+external int pty_session_has_foreground_process(
+  Pointer<native.PtySession> session,
+);
+
 @Native<
   Int32 Function(
     Pointer<native.PtySession>,
@@ -118,6 +123,10 @@ Pointer<T> lookupBundledSymbol<T extends NativeType>(String symbolName) {
       Native.addressOf<
         NativeFunction<Int64 Function(Pointer<native.PtySession>)>
       >(pty_session_pid),
+    'pty_session_has_foreground_process' =>
+      Native.addressOf<
+        NativeFunction<Int32 Function(Pointer<native.PtySession>)>
+      >(pty_session_has_foreground_process),
     'pty_session_try_write' =>
       Native.addressOf<
         NativeFunction<

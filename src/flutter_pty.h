@@ -116,6 +116,8 @@ FFI_PLUGIN_EXPORT int32_t pty_session_start(
     PtySession **out_session,
     PtyError *out_error);
 FFI_PLUGIN_EXPORT int64_t pty_session_pid(PtySession *session);
+FFI_PLUGIN_EXPORT int32_t pty_session_has_foreground_process(
+    PtySession *session);
 FFI_PLUGIN_EXPORT int32_t pty_session_try_write(
     PtySession *session,
     uint64_t request_id,

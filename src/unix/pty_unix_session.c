@@ -972,6 +972,29 @@ FFI_PLUGIN_EXPORT int64_t pty_session_pid(PtySession *session)
     return platform == NULL ? -1 : platform->process_id;
 }
 
+/*
+ * The program leads its own session, so any other foreground process group
+ * on the terminal belongs to a job it started.
+ */
+FFI_PLUGIN_EXPORT int32_t pty_session_has_foreground_process(
+    PtySession *session)
+{
+    PtyUnixPlatform *platform = platform_for(session);
+    if (platform == NULL) return 0;
+    pthread_mutex_lock(&platform->mutex);
+    int has_foreground_process = 0;
+    const int is_running =
+        !platform->process_released &&
+        !atomic_load_explicit(&session->process_exited, memory_order_acquire);
+    if (is_running && platform->master_fd >= 0) {
+        const pid_t foreground = tcgetpgrp(platform->master_fd);
+        has_foreground_process =
+            foreground > 0 && foreground != platform->process_id;
+    }
+    pthread_mutex_unlock(&platform->mutex);
+    return has_foreground_process;
+}
+
 FFI_PLUGIN_EXPORT int32_t pty_session_try_write(PtySession *session,
                                                 uint64_t request_id,
                                                 const uint8_t *bytes,

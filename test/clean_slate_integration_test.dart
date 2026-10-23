@@ -996,6 +996,34 @@ void main() {
     await session.close();
   }, skip: nativeSkipReason);
 
+  test('reports a foreground job of an interactive shell', () async {
+    final session = await Pty.spawn(
+      const PtySpawnOptions(executable: '/bin/sh', arguments: ['-i']),
+    );
+    final subscription = session.output.listen((_) {});
+    Future<void> expectForeground(bool expected) async {
+      final deadline = DateTime.now().add(const Duration(seconds: 5));
+      while (session.hasForegroundProcess != expected) {
+        if (DateTime.now().isAfter(deadline)) {
+          fail('hasForegroundProcess never became $expected');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    }
+
+    try {
+      await expectForeground(false);
+      await session.input.write(utf8.encode('sleep 30\n'));
+      await expectForeground(true);
+      await session.input.write(Uint8List.fromList(const [0x03]));
+      await expectForeground(false);
+    } finally {
+      await subscription.cancel();
+      await session.close();
+    }
+    expect(session.hasForegroundProcess, isFalse);
+  }, skip: nativeSkipReason);
+
   test('reports a crashed child as a signal exit', () async {
     final child = fixture;
     if (child == null) return;

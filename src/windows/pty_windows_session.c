@@ -1042,6 +1042,35 @@ FFI_PLUGIN_EXPORT int64_t pty_session_pid(PtySession *session)
     return platform == NULL ? -1 : (int64_t)platform->process_id;
 }
 
+/*
+ * ConPTY has no foreground process group; the shell's children share its
+ * Job Object, so more than one live process there means a program runs.
+ */
+FFI_PLUGIN_EXPORT int32_t pty_session_has_foreground_process(
+    PtySession *session)
+{
+    PtyWindowsPlatform *platform = windows_platform(session);
+    if (platform == NULL) return 0;
+    EnterCriticalSection(&platform->mutex);
+    int has_foreground_process = 0;
+    const int is_running =
+        !platform->stopping &&
+        InterlockedCompareExchange(&session->process_exited, 0, 0) == 0;
+    if (is_running && platform->job != NULL) {
+        JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting;
+        memset(&accounting, 0, sizeof(accounting));
+        if (QueryInformationJobObject(platform->job,
+                                      JobObjectBasicAccountingInformation,
+                                      &accounting,
+                                      sizeof(accounting),
+                                      NULL)) {
+            has_foreground_process = accounting.ActiveProcesses > 1;
+        }
+    }
+    LeaveCriticalSection(&platform->mutex);
+    return has_foreground_process;
+}
+
 FFI_PLUGIN_EXPORT int32_t pty_session_try_write(PtySession *session,
                                                 uint64_t request_id,
                                                 const uint8_t *bytes,

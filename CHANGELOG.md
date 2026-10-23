@@ -1,3 +1,12 @@
+## Unreleased
+
+### Features
+
+* Add `PtySession.hasForegroundProcess`: whether a program the shell started
+  holds the terminal. Unix compares the terminal's foreground process group
+  with the program's; Windows checks the program's Job Object for a live
+  child. Custom `PtySession` implementations must add it.
+
 ## 3.0.0 - 2026-10-21
 
 ### Breaking changes

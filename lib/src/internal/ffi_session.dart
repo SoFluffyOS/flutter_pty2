@@ -256,6 +256,12 @@ final class FfiPtySession implements PtySession, Finalizable {
   }
 
   @override
+  bool get hasForegroundProcess {
+    if (_closing) return false;
+    return bindings.pty_session_has_foreground_process(handle) != 0;
+  }
+
+  @override
   PtyCapabilities get capabilities => _state.capabilities;
 
   @override

@@ -65,6 +65,18 @@ class FlutterPtyBindings {
   late final _pty_session_pid = _pty_session_pidPtr
       .asFunction<int Function(ffi.Pointer<PtySession>)>();
 
+  int pty_session_has_foreground_process(ffi.Pointer<PtySession> session) {
+    return _pty_session_has_foreground_process(session);
+  }
+
+  late final _pty_session_has_foreground_processPtr =
+      _lookup<ffi.NativeFunction<ffi.Int32 Function(ffi.Pointer<PtySession>)>>(
+        'pty_session_has_foreground_process',
+      );
+  late final _pty_session_has_foreground_process =
+      _pty_session_has_foreground_processPtr
+          .asFunction<int Function(ffi.Pointer<PtySession>)>();
+
   int pty_session_try_write(
     ffi.Pointer<PtySession> session,
     int request_id,
