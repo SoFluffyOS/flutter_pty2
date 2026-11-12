@@ -7,6 +7,13 @@
   with the program's; Windows checks the program's Job Object for a live
   child. Custom `PtySession` implementations must add it.
 
+### Performance
+
+* Use less CPU on Unix while a program writes a lot of output. The reader
+  keeps reading what the terminal has buffered, up to 64 KiB, and posts it as
+  one output event instead of one per read, and acknowledging output wakes
+  the reader only when it was waiting for credit.
+
 ## 3.0.0 - 2026-10-21
 
 ### Breaking changes
