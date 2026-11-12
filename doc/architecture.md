@@ -119,6 +119,14 @@ retries `EINTR`, and treats `EAGAIN` as backpressure. A separate waiter reads
 the program's exit from its supervisor; process exit wakes the reactor so it
 can preserve trailing output before closing the PTY stream.
 
+Each time the master is readable, the reactor reads until it would block, its
+64 KiB buffer is full or the output credit is used, and posts the bytes as one
+output event. A single PTY read returns only what the line discipline holds,
+about 4 KiB on Linux, so this keeps a fast program from producing one small
+event per read. An output acknowledgement writes to the wake pipe only when the
+credit was 0, because that is the only state in which the reactor stops
+polling the master for input.
+
 The program is not a child of the host process. Spawning forks a short-lived
 launcher, which forks a supervisor and exits, so init adopts the supervisor.
 The supervisor forks the program, waits for it with `waitid(WNOWAIT)` and

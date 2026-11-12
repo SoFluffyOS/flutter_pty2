@@ -76,6 +76,17 @@ static inline uint64_t pty_output_credit_after_ack(uint64_t credit,
     return credit + byte_count;
 }
 
+/*
+ * Whether an output ack must wake a reader parked on exhausted credit. The
+ * reader waits for credit only when it saw none, so an ack needs to wake it
+ * only when it takes the credit from 0 to a positive value.
+ */
+static inline int pty_output_ack_wakes_reader(uint64_t credit_before,
+                                              uint64_t credit_after)
+{
+    return credit_before == 0 && credit_after > 0;
+}
+
 static inline void *pty_session_platform_load(PtySession *session)
 {
     if (session == NULL) return NULL;
@@ -130,6 +141,9 @@ void pty_debug_pseudo_console_close(void);
 void pty_debug_pseudo_console_release(void);
 void pty_debug_pseudo_console_close_worker(void);
 void pty_debug_get_stats(PtyDebugStats *out_stats);
+/* Internal test counter, kept out of PtyDebugStats and the Dart bindings. */
+void pty_debug_output_ack_wake(void);
+uint64_t pty_debug_output_ack_wakes(void);
 
 typedef struct PtyWriteChunk {
     struct PtyWriteChunk *next;

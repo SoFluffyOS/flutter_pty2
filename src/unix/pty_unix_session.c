@@ -18,7 +18,7 @@
 #include "../common/pty_event.h"
 #include "../pty_internal.h"
 
-#define PTY_REACTOR_BUFFER_SIZE (16 * 1024)
+#define PTY_REACTOR_BUFFER_SIZE (64 * 1024)
 #define PTY_WAKE_BUFFER_SIZE 64
 
 typedef enum PtyReadResult {
@@ -68,6 +68,8 @@ typedef struct PtyUnixPlatform {
     int input_closed;
     int session_closed_posted;
     PtyWriteQueue write_queue;
+    /* Owned by the reactor thread; read_output fills it and posts a copy. */
+    uint8_t output_buffer[PTY_REACTOR_BUFFER_SIZE];
 } PtyUnixPlatform;
 
 typedef struct PtyUnixBootstrap {
@@ -319,11 +321,24 @@ static int pty_unix_flush_write_queue(PtySession *session)
     }
 }
 
+/*
+ * Reads what the master has buffered, up to the output buffer or the credit,
+ * and posts it as one message.
+ *
+ * A pty read returns at most what the line discipline holds at that moment
+ * (about 4 KiB on Linux), so a program writing fast is drained in many small
+ * reads. The master is non-blocking, so after a read that returned data this
+ * keeps reading into the rest of the buffer until it would block, the buffer
+ * or the credit is full, or the read ends with EOF or an error. The bytes
+ * read so far are posted first; an EOF or error that ended the batch is
+ * reported by the next call, because the master keeps returning it (EIO on
+ * Linux once the slave closes, EOF on macOS).
+ */
 static int read_output(PtySession *session)
 {
     PtyUnixPlatform *platform = platform_for(session);
     if (platform == NULL) return 0;
-    uint8_t buffer[PTY_REACTOR_BUFFER_SIZE];
+    uint8_t *buffer = platform->output_buffer;
     pthread_mutex_lock(&platform->mutex);
     const int discard = platform->discard_output;
     const int master_fd = platform->master_fd;
@@ -336,24 +351,33 @@ static int read_output(PtySession *session)
         pthread_mutex_unlock(&platform->mutex);
         return PTY_READ_CREDIT_EXHAUSTED;
     }
-    size_t capacity = sizeof(buffer);
+    size_t capacity = sizeof(platform->output_buffer);
     if (!discard && credit < capacity) {
         capacity = (size_t)credit;
     }
     pthread_mutex_unlock(&platform->mutex);
     if (capacity == 0) return PTY_READ_CREDIT_EXHAUSTED;
 
-    ssize_t result;
-    do {
-        result = read(master_fd, buffer, capacity);
-    } while (result < 0 && errno == EINTR);
-    if (result > 0) {
+    size_t length = 0;
+    ssize_t result = 0;
+    int read_errno = 0;
+    while (length < capacity) {
+        do {
+            result = read(master_fd, buffer + length, capacity - length);
+        } while (result < 0 && errno == EINTR);
+        if (result <= 0) {
+            read_errno = result < 0 ? errno : 0;
+            break;
+        }
+        length += (size_t)result;
+    }
+    if (length > 0) {
         if (!discard) {
             pthread_mutex_lock(&platform->mutex);
             const int discard_after_read = platform->discard_output;
             if (!discard_after_read) {
-                if (session->output_credit >= (uint64_t)result) {
-                    session->output_credit -= (uint64_t)result;
+                if (session->output_credit >= (uint64_t)length) {
+                    session->output_credit -= (uint64_t)length;
                 } else {
                     session->output_credit = 0;
                 }
@@ -362,7 +386,9 @@ static int read_output(PtySession *session)
             if (discard_after_read) return PTY_READ_DATA;
             if (!post_session_event(
                     session,
-                    pty_post_output(session->event_port, buffer, result))) {
+                    pty_post_output(session->event_port,
+                                    buffer,
+                                    (intptr_t)length))) {
                 pthread_mutex_lock(&platform->mutex);
                 platform->discard_output = 1;
                 pthread_mutex_unlock(&platform->mutex);
@@ -371,13 +397,12 @@ static int read_output(PtySession *session)
         }
         return PTY_READ_DATA;
     }
-    if (result < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) {
+    if (result < 0 && (read_errno == EAGAIN || read_errno == EWOULDBLOCK)) {
         return PTY_READ_EMPTY;
     }
-    if (result == 0 || (result < 0 && errno == EIO)) return PTY_READ_CLOSED;
-    if (result < 0) {
-        post_child_error(session, PTY_ERROR_IO, errno, "reading PTY output failed");
-    }
+    if (result == 0 || (result < 0 && read_errno == EIO)) return PTY_READ_CLOSED;
+    post_child_error(session, PTY_ERROR_IO, read_errno,
+                     "reading PTY output failed");
     return PTY_READ_CLOSED;
 }
 
@@ -420,11 +445,17 @@ static void *reactor_worker(void *argument)
         }
         pthread_mutex_lock(&platform->mutex);
         const int stopping_after_wake = platform->stopping;
+        // Read the credit again after draining the wake pipe: an ack that
+        // arrived since the snapshot above may have been drained with the
+        // exit wake. pty_session_ack_output wakes only while the credit is 0,
+        // so a credit of 0 here means its next ack wakes the reactor again.
+        const int readable_after_wake =
+            platform->discard_output || session->output_credit > 0;
         pthread_mutex_unlock(&platform->mutex);
         if (stopping_after_wake) break;
         if (wake_ready && atomic_load_explicit(&session->process_exited,
                                                memory_order_acquire) &&
-            (discard || credit > 0)) {
+            readable_after_wake) {
             while (true) {
                 const int read_result = read_output(session);
                 if (read_result == PTY_READ_DATA) continue;
@@ -1045,9 +1076,21 @@ FFI_PLUGIN_EXPORT void pty_session_ack_output(PtySession *session,
     PtyUnixPlatform *platform = platform_for(session);
     if (platform == NULL) return;
     pthread_mutex_lock(&platform->mutex);
+    const uint64_t credit_before = session->output_credit;
     session->output_credit = pty_output_credit_after_ack(
-        session->output_credit, session->output_window_limit, byte_count);
+        credit_before, session->output_window_limit, byte_count);
+    const int wake = pty_output_ack_wakes_reader(credit_before,
+                                                 session->output_credit);
     pthread_mutex_unlock(&platform->mutex);
+    // The reactor stops polling the master for input only when the credit
+    // it read under this mutex was 0, and only the reactor lowers the credit.
+    // An ack ordered before that read leaves a nonzero credit, so the reactor
+    // keeps polling for input; an ack ordered after it sees a credit of 0
+    // and wakes the reactor, which then reads the new credit. Acks that find
+    // credit left therefore skip the wake pipe write, and the reactor's
+    // drain wake-up, without losing a wake-up.
+    if (!wake) return;
+    pty_debug_output_ack_wake();
     wake_reactor(platform);
 }
 

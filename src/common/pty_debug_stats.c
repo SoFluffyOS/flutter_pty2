@@ -15,6 +15,7 @@ static volatile LONG64 inflight_write_bytes;
 static volatile LONG64 pseudo_console_close_calls;
 static volatile LONG64 pseudo_console_release_calls;
 static volatile LONG64 pseudo_console_close_worker_calls;
+static volatile LONG64 output_ack_wakes;
 
 static volatile LONG64 *worker_counter(PtyDebugWorkerKind kind)
 {
@@ -57,6 +58,7 @@ static _Atomic uint64_t inflight_write_bytes;
 static _Atomic uint64_t pseudo_console_close_calls;
 static _Atomic uint64_t pseudo_console_release_calls;
 static _Atomic uint64_t pseudo_console_close_worker_calls;
+static _Atomic uint64_t output_ack_wakes;
 
 static _Atomic uint64_t *worker_counter(PtyDebugWorkerKind kind)
 {
@@ -153,6 +155,16 @@ void pty_debug_pseudo_console_release(void)
 void pty_debug_pseudo_console_close_worker(void)
 {
     add_counter(&pseudo_console_close_worker_calls, 1);
+}
+
+void pty_debug_output_ack_wake(void)
+{
+    add_counter(&output_ack_wakes, 1);
+}
+
+uint64_t pty_debug_output_ack_wakes(void)
+{
+    return read_counter(&output_ack_wakes);
 }
 
 FFI_PLUGIN_EXPORT void pty_debug_get_stats(PtyDebugStats *out_stats)
