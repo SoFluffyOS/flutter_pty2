@@ -68,12 +68,14 @@ PtySpawnOptions benchmarkFixtureOptions(
   List<String> arguments, {
   int inputBufferBytes = 1024 * 1024,
   int outputWindowBytes = 256 * 1024,
+  Duration outputCoalescing = PtySpawnOptions.defaultOutputCoalescing,
 }) {
   return PtySpawnOptions(
     executable: benchmarkEnvironment('PTY_TEST_CHILD'),
     arguments: List<String>.unmodifiable(arguments),
     inputBufferBytes: inputBufferBytes,
     outputWindowBytes: outputWindowBytes,
+    outputCoalescing: outputCoalescing,
   );
 }
 

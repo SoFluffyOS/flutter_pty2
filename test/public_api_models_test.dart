@@ -114,6 +114,44 @@ void main() {
         throwsArgumentError,
       );
     });
+
+    test('defaults to a short output coalescing delay', () {
+      const options = PtySpawnOptions(executable: '/bin/sh');
+
+      expect(options.outputCoalescing, const Duration(milliseconds: 2));
+      expect(options.validate, returnsNormally);
+    });
+
+    test('accepts output coalescing from zero to the maximum', () {
+      for (final delay in [
+        Duration.zero,
+        const Duration(microseconds: 1),
+        PtySpawnOptions.maxOutputCoalescing,
+      ]) {
+        expect(
+          PtySpawnOptions(
+            executable: '/bin/sh',
+            outputCoalescing: delay,
+          ).validate,
+          returnsNormally,
+        );
+      }
+    });
+
+    test('rejects negative or too long output coalescing', () {
+      for (final delay in [
+        const Duration(microseconds: -1),
+        PtySpawnOptions.maxOutputCoalescing + const Duration(microseconds: 1),
+      ]) {
+        expect(
+          () => PtySpawnOptions(
+            executable: '/bin/sh',
+            outputCoalescing: delay,
+          ).validate(),
+          throwsArgumentError,
+        );
+      }
+    });
   });
 
   test('encodes input text as UTF-8 bytes', () async {

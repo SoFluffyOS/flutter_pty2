@@ -2,10 +2,26 @@
 
 ### Features
 
+* Add `PtySpawnOptions.outputCoalescing` (Unix; 2 ms by default,
+  `Duration.zero` turns it off). Output that arrives right after the previous
+  output chunk is held for at most that long so that more of it goes into the
+  same chunk; output after a pause, such as a keystroke's echo, is delivered
+  at once.
+
 * Add `PtySession.hasForegroundProcess`: whether a program the shell started
   holds the terminal. Unix compares the terminal's foreground process group
   with the program's; Windows checks the program's Job Object for a live
   child. Custom `PtySession` implementations must add it.
+
+### Performance
+
+* Use less CPU on Unix while a program writes a lot of output. The reader
+  keeps reading what the terminal has buffered, up to 64 KiB, and posts it as
+  one output event instead of one per read, and acknowledging output wakes
+  the reader only when it was waiting for credit.
+* Use less CPU on Unix for programs that write line by line, which the
+  terminal hands to the reader one line at a time: with output coalescing on,
+  such output arrives in chunks of several KiB instead of a few hundred bytes.
 
 ## 3.0.0 - 2026-10-21
 
