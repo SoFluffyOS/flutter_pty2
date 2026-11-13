@@ -30,7 +30,8 @@ typedef void (*PtySessionFreeFunction)(PtySession *session);
  * Ownership and synchronization:
  *
  * - The lifecycle, process/output/input state, and abandoned flag are atomic.
- * - event_port, the buffer limits, and free_function are immutable after
+ * - event_port, the buffer limits, output_coalescing_ns and free_function
+ *   are immutable after
  *   pty_session_start initializes the session and publishes it to workers.
  * - output_credit is guarded by the platform mutex after platform publication;
  *   bootstrap initialization happens before any worker can observe it.
@@ -60,6 +61,7 @@ struct PtySession {
     uint64_t input_buffer_limit;
     uint64_t output_window_limit;
     uint64_t output_credit;
+    uint64_t output_coalescing_ns;
 #if defined(_WIN32)
     void *volatile platform;
 #else
@@ -85,6 +87,27 @@ static inline int pty_output_ack_wakes_reader(uint64_t credit_before,
                                               uint64_t credit_after)
 {
     return credit_before == 0 && credit_after > 0;
+}
+
+/*
+ * Output coalescing (Unix reactor). After a batch of reads that would block,
+ * the reader may hold the bytes for a moment, so that a program writing many
+ * small pieces (a terminal's line discipline delivers about one line per
+ * wake-up) is posted as one event instead of one per wake-up. Like kitty's
+ * input_delay, output is held only when the previous event was posted less
+ * than `delay` ago, and only until `delay` after that event: an isolated
+ * write, such as the echo of a keystroke after a pause, is posted at once,
+ * and no byte waits longer than `delay` after it was read. Returns the
+ * deadline in the clock of `now` and `last_post`, or 0 to post now. A
+ * `last_post` of 0 means nothing was posted yet.
+ */
+static inline uint64_t pty_output_hold_deadline(uint64_t now,
+                                                uint64_t last_post,
+                                                uint64_t delay)
+{
+    if (delay == 0 || last_post == 0 || now < last_post) return 0;
+    if (now - last_post >= delay) return 0;
+    return last_post + delay;
 }
 
 static inline void *pty_session_platform_load(PtySession *session)

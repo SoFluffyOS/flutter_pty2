@@ -127,6 +127,25 @@ event per read. An output acknowledgement writes to the wake pipe only when the
 credit was 0, because that is the only state in which the reactor stops
 polling the master for input.
 
+A program that writes line by line still makes the master readable for every
+line or so, because the line discipline hands output to the master in small
+pieces (with `OPOST`/`ONLCR` on, about one line each), so the reader would post
+one event of a few hundred bytes per wake-up. With `outputCoalescing` (2 ms by
+default) the reactor holds such a batch when the previous output event was
+posted less than that delay ago. While it holds, it sleeps in slices of at most
+250 µs and drains the master after each, until the delay after the previous
+event has passed. Like kitty's `input_delay`, which bounds latency in the same
+way, output after a pause is posted at once (the echo of a keystroke is not
+delayed), and no byte waits longer than the delay after it was read. A hold
+ends early when the buffer or the credit is full, one slice brings 12 KiB or
+more (a Linux pty buffers only about 16 KiB, so the program would soon block on
+it), a read returns EOF or an
+error, the program has exited, or anything writes to the wake pipe (input to
+write, a close, a discard, the exit). While the reactor holds output, the
+waiter waits for it to be posted before it posts the program's exit, so output
+read before the exit still arrives before `PROCESS_EXIT`. Windows ignores the
+setting.
+
 The program is not a child of the host process. Spawning forks a short-lived
 launcher, which forks a supervisor and exits, so init adopts the supervisor.
 The supervisor forks the program, waits for it with `waitid(WNOWAIT)` and

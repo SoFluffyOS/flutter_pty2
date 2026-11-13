@@ -81,7 +81,16 @@ typedef struct PtySpawnOptions {
     uint64_t input_buffer_bytes;
     uint64_t output_window_bytes;
     int64_t event_port;
+    /*
+     * Unix only: the longest time, in microseconds, output read right after
+     * the previous output event may be held so that more of it goes into the
+     * same event. Output after a pause is posted at once. 0 disables it; at
+     * most PTY_MAX_OUTPUT_COALESCING_US. Ignored on Windows.
+     */
+    uint32_t output_coalescing_us;
 } PtySpawnOptions;
+
+#define PTY_MAX_OUTPUT_COALESCING_US 100000
 
 typedef enum PtyTryWriteResult {
     PTY_WRITE_ACCEPTED = 0,

@@ -66,6 +66,11 @@ session is no longer needed.
 `inputBufferBytes` bounds both the native input queue and admitted asynchronous
 Dart writes. Concurrent writes wait in order for space in that window.
 
+On Unix, `outputCoalescing` (2 ms by default) lets the reader hold output that
+arrives right after the previous chunk for at most that long, so a program that
+writes line by line produces fewer, larger chunks. Output after a pause, such as
+the echo of a keystroke, is delivered at once. `Duration.zero` turns it off.
+
 ### Input and lifecycle semantics
 
 `input.write(bytes)` accepts arbitrary binary data and waits for bounded input

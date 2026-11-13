@@ -478,6 +478,13 @@ final class PtySpawnOptions extends ffi.Struct {
 
   @ffi.Int64()
   external int event_port;
+
+  /// Unix only: the longest time, in microseconds, output read right after
+  /// the previous output event may be held so that more of it goes into the
+  /// same event. Output after a pause is posted at once. 0 disables it; at
+  /// most PTY_MAX_OUTPUT_COALESCING_US. Ignored on Windows.
+  @ffi.Uint32()
+  external int output_coalescing_us;
 }
 
 abstract class PtyTryWriteResult {
@@ -687,3 +694,5 @@ const int WINT_MAX = 2147483647;
 const int SIG_ATOMIC_MIN = -2147483648;
 
 const int SIG_ATOMIC_MAX = 2147483647;
+
+const int PTY_MAX_OUTPUT_COALESCING_US = 100000;

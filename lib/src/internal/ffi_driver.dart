@@ -76,6 +76,7 @@ final class FfiPtyDriver {
           }
           ..input_buffer_bytes = options.inputBufferBytes
           ..output_window_bytes = options.outputWindowBytes
+          ..output_coalescing_us = options.outputCoalescing.inMicroseconds
           ..event_port = port.sendPort.nativePort;
         nativeOptions.ref.size
           ..rows = options.size.rows

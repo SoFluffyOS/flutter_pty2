@@ -12,6 +12,7 @@
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "../common/pty_error.h"
@@ -20,6 +21,20 @@
 
 #define PTY_REACTOR_BUFFER_SIZE (64 * 1024)
 #define PTY_WAKE_BUFFER_SIZE 64
+/*
+ * While output is held for coalescing, the reactor reads the master at most
+ * this often, so the line discipline gathers several small writes per read,
+ * and notices a wake-up (input to write, an exit, a close) within this time.
+ */
+#define PTY_OUTPUT_HOLD_SLICE_NS (250 * 1000)
+/*
+ * A hold ends when the initial batch or one slice brings this much. A Linux
+ * pty buffers only about 16 KiB between the program and the master (measured
+ * on Linux 6.12), so such a gain means the buffer was nearly full and the
+ * program was probably about to block on it: waiting longer would slow a
+ * fast program down, and the batch is large enough already.
+ */
+#define PTY_OUTPUT_HOLD_FULL_SLICE_BYTES (12 * 1024)
 
 typedef enum PtyReadResult {
     PTY_READ_CLOSED = 0,
@@ -68,6 +83,15 @@ typedef struct PtyUnixPlatform {
     int input_closed;
     int session_closed_posted;
     PtyWriteQueue write_queue;
+    /*
+     * Set while the reactor holds output read before the program's exit was
+     * recorded; the waiter posts the exit only after that output (see
+     * hold_for_more_output). output_hold_done is signalled when it clears.
+     */
+    int output_held;
+    pthread_cond_t output_hold_done;
+    /* Owned by the reactor thread: CLOCK_MONOTONIC of the last output event. */
+    uint64_t last_output_post_ns;
     /* Owned by the reactor thread; read_output fills it and posts a copy. */
     uint8_t output_buffer[PTY_REACTOR_BUFFER_SIZE];
 } PtyUnixPlatform;
@@ -321,15 +345,148 @@ static int pty_unix_flush_write_queue(PtySession *session)
     }
 }
 
+static uint64_t monotonic_ns(void)
+{
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return 0;
+    return (uint64_t)now.tv_sec * 1000000000u + (uint64_t)now.tv_nsec;
+}
+
+static void sleep_ns(uint64_t duration)
+{
+    struct timespec delay = {
+        .tv_sec = (time_t)(duration / 1000000000u),
+        .tv_nsec = (long)(duration % 1000000000u),
+    };
+    while (nanosleep(&delay, &delay) != 0 && errno == EINTR) {
+    }
+}
+
+/*
+ * Whether something wrote to the wake pipe; the reactor loop drains it. A
+ * failing poll counts as pending, which only ends a hold early.
+ */
+static int wake_pending(PtyUnixPlatform *platform)
+{
+    struct pollfd descriptor = {.fd = platform->wake_pipe[0], .events = POLLIN};
+    int result;
+    do {
+        result = poll(&descriptor, 1, 0);
+    } while (result < 0 && errno == EINTR);
+    return result != 0;
+}
+
+/*
+ * Reads the master into buffer[length, capacity) until the read would block,
+ * the buffer is full, or a read returns EOF or an error. Returns the new
+ * length; *last_result and *last_errno describe the read that ended it.
+ */
+static size_t read_available(int master_fd,
+                             uint8_t *buffer,
+                             size_t length,
+                             size_t capacity,
+                             ssize_t *last_result,
+                             int *last_errno)
+{
+    ssize_t result = 0;
+    int read_errno = 0;
+    while (length < capacity) {
+        do {
+            result = read(master_fd, buffer + length, capacity - length);
+        } while (result < 0 && errno == EINTR);
+        if (result <= 0) {
+            read_errno = result < 0 ? errno : 0;
+            break;
+        }
+        length += (size_t)result;
+    }
+    *last_result = result;
+    *last_errno = read_errno;
+    return length;
+}
+
+static int read_would_block(ssize_t result, int read_errno)
+{
+    return result < 0 && (read_errno == EAGAIN || read_errno == EWOULDBLOCK);
+}
+
+/*
+ * Holds bytes that were read right after the previous output event, reading
+ * more as it arrives, until `output_coalescing_ns` after that event (see
+ * pty_output_hold_deadline). It stops early when the buffer or the credit is
+ * full, the program writes fast enough to fill the pty's own buffer
+ * (PTY_OUTPUT_HOLD_FULL_SLICE_BYTES), a read ends with EOF or an error, the
+ * program has exited, or anything wakes the reactor (input to write, a close,
+ * a discard), so neither closing nor the exit drain nor input waits for it. While it holds, output_held is
+ * set, and the waiter does not post the program's exit until read_output has
+ * posted the held bytes (end_output_hold), so output written before the exit
+ * still arrives before PTY_EVENT_PROCESS_EXIT. Returns the new length.
+ */
+static size_t hold_for_more_output(PtySession *session,
+                                   PtyUnixPlatform *platform,
+                                   int master_fd,
+                                   uint8_t *buffer,
+                                   size_t length,
+                                   size_t capacity,
+                                   ssize_t *last_result,
+                                   int *last_errno)
+{
+    if (session->output_coalescing_ns == 0 ||
+        length >= PTY_OUTPUT_HOLD_FULL_SLICE_BYTES) {
+        return length;
+    }
+    uint64_t now = monotonic_ns();
+    const uint64_t deadline = pty_output_hold_deadline(
+        now, platform->last_output_post_ns, session->output_coalescing_ns);
+    if (deadline == 0) return length;
+    // The waiter records the exit under the mutex, so either it sees this
+    // hold and waits for its event, or this sees the exit and does not hold.
+    pthread_mutex_lock(&platform->mutex);
+    const int exited = atomic_load_explicit(&session->process_exited,
+                                            memory_order_acquire);
+    if (!exited) platform->output_held = 1;
+    pthread_mutex_unlock(&platform->mutex);
+    if (exited) return length;
+    while (now < deadline && length < capacity &&
+           read_would_block(*last_result, *last_errno)) {
+        if (atomic_load_explicit(&session->process_exited,
+                                 memory_order_acquire)) {
+            break;
+        }
+        uint64_t slice = deadline - now;
+        if (slice > PTY_OUTPUT_HOLD_SLICE_NS) slice = PTY_OUTPUT_HOLD_SLICE_NS;
+        sleep_ns(slice);
+        if (wake_pending(platform)) break;
+        const size_t before = length;
+        length = read_available(master_fd, buffer, length, capacity,
+                                last_result, last_errno);
+        if (length - before >= PTY_OUTPUT_HOLD_FULL_SLICE_BYTES) break;
+        now = monotonic_ns();
+    }
+    return length;
+}
+
+static void end_output_hold(PtyUnixPlatform *platform)
+{
+    pthread_mutex_lock(&platform->mutex);
+    if (platform->output_held) {
+        platform->output_held = 0;
+        pthread_cond_broadcast(&platform->output_hold_done);
+    }
+    pthread_mutex_unlock(&platform->mutex);
+}
+
 /*
  * Reads what the master has buffered, up to the output buffer or the credit,
  * and posts it as one message.
  *
  * A pty read returns at most what the line discipline holds at that moment
- * (about 4 KiB on Linux), so a program writing fast is drained in many small
- * reads. The master is non-blocking, so after a read that returned data this
- * keeps reading into the rest of the buffer until it would block, the buffer
- * or the credit is full, or the read ends with EOF or an error. The bytes
+ * (about 4 KiB on Linux, often a single line), so a program writing fast is
+ * drained in many small reads. The master is non-blocking, so after a read
+ * that returned data this keeps reading into the rest of the buffer until it
+ * would block, the buffer or the credit is full, or the read ends with EOF or
+ * an error. With output coalescing on, bytes read soon after the previous
+ * event may then be held a little longer (hold_for_more_output). The bytes
  * read so far are posted first; an EOF or error that ended the batch is
  * reported by the next call, because the master keeps returning it (EIO on
  * Linux once the slave closes, EOF on macOS).
@@ -358,18 +515,13 @@ static int read_output(PtySession *session)
     pthread_mutex_unlock(&platform->mutex);
     if (capacity == 0) return PTY_READ_CREDIT_EXHAUSTED;
 
-    size_t length = 0;
     ssize_t result = 0;
     int read_errno = 0;
-    while (length < capacity) {
-        do {
-            result = read(master_fd, buffer + length, capacity - length);
-        } while (result < 0 && errno == EINTR);
-        if (result <= 0) {
-            read_errno = result < 0 ? errno : 0;
-            break;
-        }
-        length += (size_t)result;
+    size_t length = read_available(master_fd, buffer, 0, capacity,
+                                   &result, &read_errno);
+    if (length > 0 && !discard) {
+        length = hold_for_more_output(session, platform, master_fd, buffer,
+                                      length, capacity, &result, &read_errno);
     }
     if (length > 0) {
         if (!discard) {
@@ -383,12 +535,20 @@ static int read_output(PtySession *session)
                 }
             }
             pthread_mutex_unlock(&platform->mutex);
-            if (discard_after_read) return PTY_READ_DATA;
-            if (!post_session_event(
-                    session,
-                    pty_post_output(session->event_port,
-                                    buffer,
-                                    (intptr_t)length))) {
+            if (discard_after_read) {
+                end_output_hold(platform);
+                return PTY_READ_DATA;
+            }
+            const int posted = post_session_event(
+                session,
+                pty_post_output(session->event_port,
+                                buffer,
+                                (intptr_t)length));
+            if (session->output_coalescing_ns != 0) {
+                platform->last_output_post_ns = monotonic_ns();
+                end_output_hold(platform);
+            }
+            if (!posted) {
                 pthread_mutex_lock(&platform->mutex);
                 platform->discard_output = 1;
                 pthread_mutex_unlock(&platform->mutex);
@@ -397,9 +557,7 @@ static int read_output(PtySession *session)
         }
         return PTY_READ_DATA;
     }
-    if (result < 0 && (read_errno == EAGAIN || read_errno == EWOULDBLOCK)) {
-        return PTY_READ_EMPTY;
-    }
+    if (read_would_block(result, read_errno)) return PTY_READ_EMPTY;
     if (result == 0 || (result < 0 && read_errno == EIO)) return PTY_READ_CLOSED;
     post_child_error(session, PTY_ERROR_IO, read_errno,
                      "reading PTY output failed");
@@ -553,6 +711,13 @@ static void *waiter_worker(void *argument)
     // let the supervisor reap the program.
     release_process(platform);
     wake_reactor(platform);
+    // Output the reactor read before the exit is posted first. The wake-up
+    // ends its hold within one PTY_OUTPUT_HOLD_SLICE_NS.
+    pthread_mutex_lock(&platform->mutex);
+    while (platform->output_held) {
+        pthread_cond_wait(&platform->output_hold_done, &platform->mutex);
+    }
+    pthread_mutex_unlock(&platform->mutex);
     if (read_result == 1) {
         post_session_event(
             session,
@@ -585,6 +750,7 @@ static void free_unix_session(PtySession *session)
         if (platform->wake_pipe[0] >= 0) close(platform->wake_pipe[0]);
         if (platform->wake_pipe[1] >= 0) close(platform->wake_pipe[1]);
         pty_write_queue_dispose(&platform->write_queue);
+        pthread_cond_destroy(&platform->output_hold_done);
         pthread_mutex_destroy(&platform->mutex);
         free(platform);
     }
@@ -729,10 +895,16 @@ static void *bootstrap_worker(void *argument)
         platform->wake_pipe[0] = -1;
         platform->wake_pipe[1] = -1;
         const int mutex_result = pthread_mutex_init(&platform->mutex, NULL);
-        if (mutex_result == 0) {
+        const int condition_result =
+            mutex_result == 0
+                ? pthread_cond_init(&platform->output_hold_done, NULL)
+                : mutex_result;
+        if (condition_result == 0) {
+            // Both the mutex and the hold condition are ready.
             mutex_initialized = 1;
         } else {
-            setup_error = mutex_result;
+            if (mutex_result == 0) pthread_mutex_destroy(&platform->mutex);
+            setup_error = condition_result;
         }
     }
     int retained_slave_fd = -1;
@@ -753,7 +925,10 @@ static void *bootstrap_worker(void *argument)
         if (platform != NULL) {
             if (platform->wake_pipe[0] >= 0) close(platform->wake_pipe[0]);
             if (platform->wake_pipe[1] >= 0) close(platform->wake_pipe[1]);
-            if (mutex_initialized) pthread_mutex_destroy(&platform->mutex);
+            if (mutex_initialized) {
+                pthread_cond_destroy(&platform->output_hold_done);
+                pthread_mutex_destroy(&platform->mutex);
+            }
             free(platform);
         }
         close(master_fd);
@@ -936,7 +1111,9 @@ FFI_PLUGIN_EXPORT int32_t pty_session_start(const PtySpawnOptions *options,
     if (options == NULL || out_session == NULL || options->executable == NULL ||
         options->executable[0] == '\0' || options->argument_count < 0 ||
         options->environment_count < 0 || options->input_buffer_bytes == 0 ||
-        options->output_window_bytes == 0 || !pty_size_is_valid(options->size)) {
+        options->output_window_bytes == 0 ||
+        options->output_coalescing_us > PTY_MAX_OUTPUT_COALESCING_US ||
+        !pty_size_is_valid(options->size)) {
         pty_error_set(out_error,
                       PTY_ERROR_DOMAIN_INTERNAL,
                       PTY_ERROR_INVALID_ARGUMENT,
@@ -958,6 +1135,8 @@ FFI_PLUGIN_EXPORT int32_t pty_session_start(const PtySpawnOptions *options,
     session->input_buffer_limit = options->input_buffer_bytes;
     session->output_window_limit = options->output_window_bytes;
     session->output_credit = options->output_window_bytes;
+    session->output_coalescing_ns =
+        (uint64_t)options->output_coalescing_us * 1000u;
     session->free_function = free_unix_session;
 
     PtyUnixBootstrap *bootstrap = calloc(1, sizeof(*bootstrap));

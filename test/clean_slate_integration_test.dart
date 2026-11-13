@@ -1038,4 +1038,75 @@ void main() {
     if (processExit case PtySignalExit(:final signal)) expect(signal, 11);
     expect(done, processExit);
   }, skip: skipReason);
+
+  group('output coalescing', () {
+    Future<List<Uint8List>> burstChunks(Duration coalescing) async {
+      final session = await Pty.spawn(
+        PtySpawnOptions(
+          executable: '/bin/sh',
+          arguments: const [
+            '-c',
+            'for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; '
+                'do echo \$i; sleep 0.005; done',
+          ],
+          outputCoalescing: coalescing,
+        ),
+      );
+      final chunks = session.output.toList();
+      await session.done.timeout(const Duration(seconds: 10));
+      await session.close();
+      return chunks;
+    }
+
+    test('delivers back-to-back output in fewer chunks', () async {
+      final expected = [for (var line = 1; line <= 20; line++) '$line\n'];
+      final without = await burstChunks(Duration.zero);
+      final with50ms = await burstChunks(const Duration(milliseconds: 50));
+
+      for (final chunks in [without, with50ms]) {
+        expect(
+          decodeTerminalText(chunks.expand((chunk) => chunk)),
+          expected.join(),
+        );
+      }
+      expect(without.length, greaterThanOrEqualTo(10));
+      expect(with50ms.length, lessThanOrEqualTo(6));
+    });
+
+    test('delivers the echo of an isolated keystroke at once', () async {
+      final session = await Pty.spawn(
+        const PtySpawnOptions(
+          executable: '/bin/sh',
+          arguments: ['-c', 'cat >/dev/null'],
+          outputCoalescing: PtySpawnOptions.maxOutputCoalescing,
+        ),
+      );
+      final echoes = StreamController<Stopwatch>();
+      Stopwatch? pending;
+      final subscription = session.output.listen((chunk) {
+        final stopwatch = pending;
+        if (stopwatch == null) return;
+        pending = null;
+        echoes.add(stopwatch..stop());
+      });
+      final iterator = StreamIterator(echoes.stream);
+      try {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        for (final key in 'ab'.codeUnits) {
+          pending = Stopwatch()..start();
+          await session.input.write(Uint8List.fromList([key]));
+          expect(await iterator.moveNext(), isTrue);
+          expect(
+            iterator.current.elapsed,
+            lessThan(const Duration(milliseconds: 40)),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+        }
+      } finally {
+        await subscription.cancel();
+        await iterator.cancel();
+        await session.close();
+      }
+    });
+  }, skip: nativeSkipReason);
 }

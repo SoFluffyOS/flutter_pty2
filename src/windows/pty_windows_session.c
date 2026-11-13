@@ -984,7 +984,9 @@ FFI_PLUGIN_EXPORT int32_t pty_session_start(const PtySpawnOptions *options,
     if (options == NULL || out_session == NULL || options->executable == NULL ||
         options->executable[0] == '\0' || options->argument_count < 0 ||
         options->environment_count < 0 || options->input_buffer_bytes == 0 ||
-        options->output_window_bytes == 0 || !pty_size_is_valid(options->size)) {
+        options->output_window_bytes == 0 ||
+        options->output_coalescing_us > PTY_MAX_OUTPUT_COALESCING_US ||
+        !pty_size_is_valid(options->size)) {
         pty_error_set(out_error,
                       PTY_ERROR_DOMAIN_INTERNAL,
                       PTY_ERROR_INVALID_ARGUMENT,
@@ -1006,6 +1008,8 @@ FFI_PLUGIN_EXPORT int32_t pty_session_start(const PtySpawnOptions *options,
     session->input_buffer_limit = options->input_buffer_bytes;
     session->output_window_limit = options->output_window_bytes;
     session->output_credit = options->output_window_bytes;
+    session->output_coalescing_ns =
+        (uint64_t)options->output_coalescing_us * 1000u;
     session->free_function = windows_free_session;
     PtyWindowsBootstrap *bootstrap = calloc(1, sizeof(*bootstrap));
     if (bootstrap == NULL ||
